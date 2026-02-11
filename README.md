@@ -66,8 +66,9 @@ A complete example is available at `examples/read_once.cpp` with exception handl
 Build and run it after building the static library:
 
 ```bash
-g++ -std=c++17 -Iinclude examples/read_once.cpp -Lbuild -llsm6ds3 -o read_once
-./read_once
+cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=OFF
+cmake --build build -j
+./build/lsm6ds3_read_once
 ```
 
 It prints one accel sample (m/s²) and one gyro sample (rad/s).
