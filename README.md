@@ -59,17 +59,15 @@ timestamp,ax,ay,az,gx,gy,gz
 - `a*` in m/s²
 - `g*` in rad/s
 
-## C++ quick sketch
+## C++ example (robust, one-shot read)
 
-```cpp
-#include "lsm6ds3/lsm6ds3.hpp"
+A complete example is available at `examples/read_once.cpp` with exception handling and explicit shutdown.
 
-int main() {
-  lsm6ds3::Lsm6ds3 imu;
-  imu.begin();
-  auto accel = imu.read_accel_si();
-  auto gyro = imu.read_gyro_si();
-  imu.close();
-  return 0;
-}
+Build and run it after building the static library:
+
+```bash
+g++ -std=c++17 -Iinclude examples/read_once.cpp -Lbuild -llsm6ds3 -o read_once
+./read_once
 ```
+
+It prints one accel sample (m/s²) and one gyro sample (rad/s).

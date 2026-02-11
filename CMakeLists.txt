@@ -22,6 +22,10 @@ target_include_directories(lsm6ds3
 
 target_compile_options(lsm6ds3 PRIVATE -Wall -Wextra -Wpedantic)
 
+
+add_executable(lsm6ds3_read_once examples/read_once.cpp)
+target_link_libraries(lsm6ds3_read_once PRIVATE lsm6ds3)
+
 if(LSM6DS3_BUILD_PYTHON)
   find_package(pybind11 CONFIG REQUIRED)
 
