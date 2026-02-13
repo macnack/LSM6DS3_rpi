@@ -31,6 +31,11 @@ Linux-first C++17 and Python 3.13 library for hardware PWM servo output on Raspb
    for c in /sys/class/pwm/pwmchip*; do echo "$c npwm=$(cat "$c/npwm")"; done
    ```
 4. Ensure your user can write PWM sysfs files (typically root or udev rule).
+   If you get `Permission denied` on `/sys/class/pwm/...`, run commands as root:
+   ```bash
+   sudo "$(command -v servo-pwm-set)" 12 20000000 1500000
+   sudo "$(command -v servo-pwm-multi-cycle)"
+   ```
 
 Pin/function mapping used by included examples:
 
@@ -72,6 +77,10 @@ servo-pwm-set 12 off
 
 # Multi-channel loop
 servo-pwm-multi-cycle
+
+# If lock-file creation fails (for example /tmp policy), disable lock file:
+servo-pwm-set --no-lock 12 20000000 1500000
+servo-pwm-multi-cycle --no-lock
 
 # Or run wrappers from examples/
 python3 examples/pwmset.py 12 20000000 1500000
