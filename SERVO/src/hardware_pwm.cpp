@@ -1,6 +1,7 @@
 #include "servo/hardware_pwm.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cmath>
@@ -56,7 +57,8 @@ void write_text_file_retry(const std::string& path, const std::string& value, un
     const int fd = ::open(path.c_str(), O_WRONLY | O_CLOEXEC);
     if (fd < 0) {
       const int err = errno;
-      const bool transient = (err == EINTR || err == EAGAIN || err == EBUSY || err == ETIMEDOUT);
+      const bool transient = (err == EINTR || err == EAGAIN || err == EBUSY || err == ETIMEDOUT ||
+                              err == EACCES || err == EPERM);
       if (transient && attempt + 1 < attempts) {
         std::this_thread::sleep_for(std::chrono::milliseconds(2U * (attempt + 1)));
         continue;
@@ -74,7 +76,7 @@ void write_text_file_retry(const std::string& path, const std::string& value, un
 
     const bool busy = (write_err == EBUSY || write_err == EINVAL);
     const bool transient = (write_err == EINTR || write_err == EAGAIN || write_err == ETIMEDOUT ||
-                            (allow_busy && busy));
+                            write_err == EACCES || write_err == EPERM || (allow_busy && busy));
     if (transient && attempt + 1 < attempts) {
       std::this_thread::sleep_for(std::chrono::milliseconds(2U * (attempt + 1)));
       continue;
@@ -213,6 +215,7 @@ void HardwarePwm::begin() {
 
   export_channel_locked();
   ensure_channel_path_locked();
+  ensure_channel_writable_locked();
 
   write_enable_locked(false);
   write_polarity_locked(config_.invert_polarity);
@@ -375,6 +378,33 @@ void HardwarePwm::ensure_channel_path_locked() {
   }
 
   throw PwmError("PWM channel path did not appear: '" + channel_path_locked() + "'");
+}
+
+void HardwarePwm::ensure_channel_writable_locked() {
+  const std::array<std::string, 3> files = {"enable", "period", "duty_cycle"};
+  const unsigned int min_attempts = 20;
+  const unsigned int attempts = std::max(config_.retries + 1, min_attempts);
+
+  auto all_writable = [&]() -> bool {
+    const std::string base = channel_path_locked();
+    for (const auto& file : files) {
+      const std::string path = base + "/" + file;
+      if (::access(path.c_str(), W_OK) != 0) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  for (unsigned int attempt = 0; attempt < attempts; ++attempt) {
+    if (all_writable()) {
+      return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10U));
+  }
+
+  throw PwmError("PWM channel exists but is not writable yet: '" + channel_path_locked() +
+                 "' (permission/udev race)");
 }
 
 void HardwarePwm::write_period_locked(uint64_t period_ns) {

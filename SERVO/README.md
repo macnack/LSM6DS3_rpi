@@ -47,11 +47,18 @@ Do a one-time permission setup, then run normal commands without `sudo`.
    ```
 2. Install udev rule:
    ```bash
+   cd ~/LSM6DS3_rpi
    sudo cp ./rpi_config/pwm/60-servo-pwm.rules /etc/udev/rules.d/
    sudo udevadm control --reload-rules
    sudo udevadm trigger
    ```
 3. Re-login (or reboot).
+   If channels were previously exported by root, unexport once:
+   ```bash
+   for ch in 0 1 2 3; do
+     [ -d /sys/class/pwm/pwmchip0/pwm$ch ] && echo "$ch" | sudo tee /sys/class/pwm/pwmchip0/unexport >/dev/null
+   done
+   ```
 4. Runtime `pinctrl` is disabled by default (recommended for non-root when overlay already configures mux).
    Enable it only if you explicitly need runtime mux switching:
    ```bash
@@ -94,6 +101,7 @@ You can force a lock directory with:
 ```bash
 export SERVO_PWM_LOCK_DIR=/run/lock
 ```
+No manual pre-export is required; the library now waits for exported channel files to become writable.
 
 Run:
 

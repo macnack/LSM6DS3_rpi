@@ -66,6 +66,7 @@ class HardwarePwm {
   void export_channel_locked();
   void unexport_channel_locked() noexcept;
   void ensure_channel_path_locked();
+  void ensure_channel_writable_locked();
 
   void write_period_locked(uint64_t period_ns);
   void write_duty_locked(uint64_t duty_cycle_ns);
