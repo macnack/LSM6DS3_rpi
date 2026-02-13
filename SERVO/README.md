@@ -47,10 +47,7 @@ Do a one-time permission setup, then run normal commands without `sudo`.
    ```
 2. Install udev rule:
    ```bash
-   cat <<'RULE' | sudo tee /etc/udev/rules.d/60-servo-pwm.rules > /dev/null
-   SUBSYSTEM=="pwm", KERNEL=="pwmchip*", GROUP="gpio", MODE="0770"
-   SUBSYSTEM=="pwm", KERNEL=="pwm*", GROUP="gpio", MODE="0770"
-   RULE
+   sudo cp ./rpi_config/pwm/60-servo-pwm.rules /etc/udev/rules.d/
    sudo udevadm control --reload-rules
    sudo udevadm trigger
    ```
