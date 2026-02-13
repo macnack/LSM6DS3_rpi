@@ -7,7 +7,7 @@ Linux-first C++17 and Python 3.13 library for hardware PWM servo output on Raspb
 - Native C++17 implementation (not a Python port) in `namespace servo`.
 - Linux sysfs PWM backend (`/sys/class/pwm/pwmchipN/pwmM`) with bounded retries.
 - Thread-safe API for intra-process use (`std::mutex` protected).
-- Optional cross-process channel lock (`/tmp/servo_pwmchipX_pwmY.lock`) to prevent accidental channel sharing.
+- Optional cross-process channel lock (auto path: `/run/lock`, `/var/lock`, `/dev/shm`, `/tmp`) to prevent accidental channel sharing.
 - High-level `Servo` class with angle-to-pulse mapping and configurable limits.
 - pybind11 bindings packaged as `servo_rpi` for Python 3.13.
 
@@ -35,6 +35,29 @@ Linux-first C++17 and Python 3.13 library for hardware PWM servo output on Raspb
    ```bash
    sudo "$(command -v servo-pwm-set)" 12 20000000 1500000
    sudo "$(command -v servo-pwm-multi-cycle)"
+   ```
+
+## Run Without Root (Recommended)
+
+Do a one-time permission setup, then run normal commands without `sudo`.
+
+1. Add your user to `gpio` group:
+   ```bash
+   sudo usermod -aG gpio "$USER"
+   ```
+2. Install udev rule:
+   ```bash
+   cat <<'RULE' | sudo tee /etc/udev/rules.d/60-servo-pwm.rules > /dev/null
+   SUBSYSTEM=="pwm", KERNEL=="pwmchip*", GROUP="gpio", MODE="0770"
+   SUBSYSTEM=="pwm", KERNEL=="pwm*", GROUP="gpio", MODE="0770"
+   RULE
+   sudo udevadm control --reload-rules
+   sudo udevadm trigger
+   ```
+3. Re-login (or reboot).
+4. If pin mux is already configured by overlay, skip runtime `pinctrl`:
+   ```bash
+   export SERVO_PWM_SKIP_PINCTRL=1
    ```
 
 Pin/function mapping used by included examples:
@@ -89,6 +112,10 @@ servo-pwm-multi-cycle
 # If lock-file creation fails (for example /tmp policy), disable lock file:
 servo-pwm-set --no-lock 12 20000000 1500000
 servo-pwm-multi-cycle --no-lock
+
+# If pin mux is preconfigured and you run without root:
+servo-pwm-set --skip-pinctrl 12 20000000 1500000
+servo-pwm-multi-cycle --skip-pinctrl
 
 # Or run wrappers from examples/
 python3 examples/pwmset.py 12 20000000 1500000
