@@ -76,6 +76,7 @@ def disable_pwm(pin: int, use_lock: bool = True) -> None:
     cfg.chip = chip_index
     cfg.channel = mapping.channel
     cfg.enabled_on_begin = False
+    cfg.disable_on_close = True
     cfg.unexport_on_close = False
     cfg.use_channel_lock = use_lock
 
@@ -112,6 +113,7 @@ def set_pwm(pin: int, period_ns: int, duty_ns: int, use_lock: bool = True) -> No
     cfg.period_ns = period_ns
     cfg.duty_cycle_ns = duty_ns
     cfg.enabled_on_begin = True
+    cfg.disable_on_close = False
     cfg.unexport_on_close = False
     cfg.use_channel_lock = use_lock
 

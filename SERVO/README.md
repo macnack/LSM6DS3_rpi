@@ -66,6 +66,8 @@ Installed console scripts:
 - `servo-pwm-set`
 - `servo-pwm-multi-cycle`
 
+Note: these CLI tools keep PWM enabled after each write so servo pulses continue between updates.
+
 Run:
 
 ```bash

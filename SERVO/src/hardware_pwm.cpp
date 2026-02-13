@@ -32,6 +32,7 @@ HardwarePwmConfig make_pwm_config(uint32_t chip, uint32_t channel, const ServoCo
   pwm_config.duty_cycle_ns = config.neutral_pulse_width_us * kNsPerUs;
   pwm_config.invert_polarity = config.invert_polarity;
   pwm_config.enabled_on_begin = config.enabled_on_begin;
+  pwm_config.disable_on_close = true;
   pwm_config.unexport_on_close = config.unexport_on_close;
   pwm_config.use_channel_lock = config.use_channel_lock;
   pwm_config.retries = config.retries;
@@ -198,7 +199,7 @@ void HardwarePwm::close() noexcept {
   try {
     ChannelLock channel_lock(config_.chip, config_.channel, config_.use_channel_lock);
 
-    if (open_) {
+    if (open_ && config_.disable_on_close) {
       try {
         write_enable_locked(false);
       } catch (...) {

@@ -23,6 +23,7 @@ struct HardwarePwmConfig {
   uint64_t duty_cycle_ns = 1'500'000ULL;      // 1.5 ms neutral
   bool invert_polarity = false;
   bool enabled_on_begin = true;
+  bool disable_on_close = true;
   bool unexport_on_close = false;
   bool use_channel_lock = true;
   unsigned int retries = 3;

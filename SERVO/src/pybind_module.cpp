@@ -15,6 +15,7 @@ PYBIND11_MODULE(_servo, m) {
       .def_readwrite("duty_cycle_ns", &servo::HardwarePwmConfig::duty_cycle_ns)
       .def_readwrite("invert_polarity", &servo::HardwarePwmConfig::invert_polarity)
       .def_readwrite("enabled_on_begin", &servo::HardwarePwmConfig::enabled_on_begin)
+      .def_readwrite("disable_on_close", &servo::HardwarePwmConfig::disable_on_close)
       .def_readwrite("unexport_on_close", &servo::HardwarePwmConfig::unexport_on_close)
       .def_readwrite("use_channel_lock", &servo::HardwarePwmConfig::use_channel_lock)
       .def_readwrite("retries", &servo::HardwarePwmConfig::retries);
