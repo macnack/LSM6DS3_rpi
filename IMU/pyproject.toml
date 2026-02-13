@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "lsm6ds3_rpi"
 version = "0.1.0"
-description = "Production-grade Linux I2C driver and Python bindings for ST LSM6DS3"
+description = "Production-grade Linux I2C/SPI driver and Python bindings for ST LSM6DS3"
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [{name = "LSM6DS3 contributors"}]

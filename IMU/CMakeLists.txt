@@ -9,7 +9,9 @@ option(LSM6DS3_BUILD_PYTHON "Build pybind11 module" ON)
 
 add_library(lsm6ds3 STATIC
   src/linux_i2c.cpp
+  src/linux_spi.cpp
   src/lsm6ds3.cpp
+  src/lsm6ds3_spi.cpp
 )
 
 set_target_properties(lsm6ds3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -25,6 +27,9 @@ target_compile_options(lsm6ds3 PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(lsm6ds3_read_once examples/read_once.cpp)
 target_link_libraries(lsm6ds3_read_once PRIVATE lsm6ds3)
+
+add_executable(lsm6ds3_read_once_spi examples/read_once_spi.cpp)
+target_link_libraries(lsm6ds3_read_once_spi PRIVATE lsm6ds3)
 
 if(LSM6DS3_BUILD_PYTHON)
   find_package(pybind11 CONFIG REQUIRED)

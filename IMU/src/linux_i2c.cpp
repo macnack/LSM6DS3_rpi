@@ -79,7 +79,9 @@ void LinuxI2c::write_register(uint8_t reg, const uint8_t* data, std::size_t leng
   std::vector<uint8_t> buffer;
   buffer.reserve(length + 1);
   buffer.push_back(reg);
-  buffer.insert(buffer.end(), data, data + length);
+  if (length > 0) {
+    buffer.insert(buffer.end(), data, data + length);
+  }
 
   i2c_msg msg{};
   msg.addr = address_;

@@ -1,4 +1,5 @@
 #include "lsm6ds3/lsm6ds3.hpp"
+#include "lsm6ds3/lsm6ds3_spi.hpp"
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -7,8 +8,10 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(_lsm6ds3, m) {
   using lsm6ds3::Lsm6ds3;
+  using lsm6ds3::Lsm6ds3Spi;
 
   py::register_exception<lsm6ds3::I2cError>(m, "I2cError");
+  py::register_exception<lsm6ds3::SpiError>(m, "SpiError");
 
   py::enum_<Lsm6ds3::AccelOdr>(m, "AccelOdr")
       .value("POWER_DOWN", Lsm6ds3::AccelOdr::PowerDown)
@@ -45,16 +48,39 @@ PYBIND11_MODULE(_lsm6ds3, m) {
   py::class_<Lsm6ds3>(m, "Lsm6ds3")
       .def(py::init<std::string, uint8_t, unsigned int>(), py::arg("bus_path") = "/dev/i2c-1",
            py::arg("address") = 0x6A, py::arg("retries") = 2)
-      .def("begin", &Lsm6ds3::begin)
-      .def("close", &Lsm6ds3::close, py::arg("power_down") = true)
-      .def("enable_accel", &Lsm6ds3::enable_accel)
-      .def("enable_gyro", &Lsm6ds3::enable_gyro)
-      .def("set_accel_odr", &Lsm6ds3::set_accel_odr)
-      .def("set_gyro_odr", &Lsm6ds3::set_gyro_odr)
-      .def("set_accel_scale", &Lsm6ds3::set_accel_scale)
-      .def("set_gyro_scale", &Lsm6ds3::set_gyro_scale)
-      .def("read_accel_raw", &Lsm6ds3::read_accel_raw)
-      .def("read_gyro_raw", &Lsm6ds3::read_gyro_raw)
-      .def("read_accel", &Lsm6ds3::read_accel_si)
-      .def("read_gyro", &Lsm6ds3::read_gyro_si);
+      .def("begin", &Lsm6ds3::begin, py::call_guard<py::gil_scoped_release>())
+      .def("close", &Lsm6ds3::close, py::arg("power_down") = true,
+           py::call_guard<py::gil_scoped_release>())
+      .def("enable_accel", &Lsm6ds3::enable_accel, py::call_guard<py::gil_scoped_release>())
+      .def("enable_gyro", &Lsm6ds3::enable_gyro, py::call_guard<py::gil_scoped_release>())
+      .def("set_accel_odr", &Lsm6ds3::set_accel_odr, py::call_guard<py::gil_scoped_release>())
+      .def("set_gyro_odr", &Lsm6ds3::set_gyro_odr, py::call_guard<py::gil_scoped_release>())
+      .def("set_accel_scale", &Lsm6ds3::set_accel_scale,
+           py::call_guard<py::gil_scoped_release>())
+      .def("set_gyro_scale", &Lsm6ds3::set_gyro_scale, py::call_guard<py::gil_scoped_release>())
+      .def("read_accel_raw", &Lsm6ds3::read_accel_raw, py::call_guard<py::gil_scoped_release>())
+      .def("read_gyro_raw", &Lsm6ds3::read_gyro_raw, py::call_guard<py::gil_scoped_release>())
+      .def("read_accel", &Lsm6ds3::read_accel_si, py::call_guard<py::gil_scoped_release>())
+      .def("read_gyro", &Lsm6ds3::read_gyro_si, py::call_guard<py::gil_scoped_release>());
+
+  py::class_<Lsm6ds3Spi>(m, "Lsm6ds3Spi")
+      .def(py::init<std::string, uint32_t, uint8_t, unsigned int>(),
+           py::arg("device_path") = "/dev/spidev0.0", py::arg("speed_hz") = 5000000,
+           py::arg("mode") = 3, py::arg("retries") = 2)
+      .def("begin", &Lsm6ds3Spi::begin, py::call_guard<py::gil_scoped_release>())
+      .def("close", &Lsm6ds3Spi::close, py::arg("power_down") = true,
+           py::call_guard<py::gil_scoped_release>())
+      .def("enable_accel", &Lsm6ds3Spi::enable_accel, py::call_guard<py::gil_scoped_release>())
+      .def("enable_gyro", &Lsm6ds3Spi::enable_gyro, py::call_guard<py::gil_scoped_release>())
+      .def("set_accel_odr", &Lsm6ds3Spi::set_accel_odr, py::call_guard<py::gil_scoped_release>())
+      .def("set_gyro_odr", &Lsm6ds3Spi::set_gyro_odr, py::call_guard<py::gil_scoped_release>())
+      .def("set_accel_scale", &Lsm6ds3Spi::set_accel_scale,
+           py::call_guard<py::gil_scoped_release>())
+      .def("set_gyro_scale", &Lsm6ds3Spi::set_gyro_scale, py::call_guard<py::gil_scoped_release>())
+      .def("read_accel_raw", &Lsm6ds3Spi::read_accel_raw,
+           py::call_guard<py::gil_scoped_release>())
+      .def("read_gyro_raw", &Lsm6ds3Spi::read_gyro_raw,
+           py::call_guard<py::gil_scoped_release>())
+      .def("read_accel", &Lsm6ds3Spi::read_accel_si, py::call_guard<py::gil_scoped_release>())
+      .def("read_gyro", &Lsm6ds3Spi::read_gyro_si, py::call_guard<py::gil_scoped_release>());
 }

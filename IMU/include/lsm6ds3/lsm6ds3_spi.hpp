@@ -1,6 +1,7 @@
 #pragma once
 
-#include "lsm6ds3/linux_i2c.hpp"
+#include "lsm6ds3/linux_spi.hpp"
+#include "lsm6ds3/lsm6ds3.hpp"
 
 #include <array>
 #include <cstdint>
@@ -10,50 +11,19 @@
 
 namespace lsm6ds3 {
 
-class Lsm6ds3 {
+class Lsm6ds3Spi {
  public:
-  enum class AccelOdr : uint8_t {
-    PowerDown = 0x00,
-    Hz12_5 = 0x10,
-    Hz26 = 0x20,
-    Hz52 = 0x30,
-    Hz104 = 0x40,
-    Hz208 = 0x50,
-    Hz416 = 0x60,
-    Hz833 = 0x70,
-  };
+  using AccelOdr = Lsm6ds3::AccelOdr;
+  using GyroOdr = Lsm6ds3::GyroOdr;
+  using AccelScale = Lsm6ds3::AccelScale;
+  using GyroScale = Lsm6ds3::GyroScale;
 
-  enum class GyroOdr : uint8_t {
-    PowerDown = 0x00,
-    Hz12_5 = 0x10,
-    Hz26 = 0x20,
-    Hz52 = 0x30,
-    Hz104 = 0x40,
-    Hz208 = 0x50,
-    Hz416 = 0x60,
-    Hz833 = 0x70,
-  };
+  explicit Lsm6ds3Spi(std::string device_path = "/dev/spidev0.0", uint32_t speed_hz = 5000000,
+                      uint8_t mode = 3, unsigned int retries = 2);
+  ~Lsm6ds3Spi();
 
-  enum class AccelScale : uint8_t {
-    G2 = 0x00,
-    G16 = 0x04,
-    G4 = 0x08,
-    G8 = 0x0C,
-  };
-
-  enum class GyroScale : uint8_t {
-    Dps245 = 0x00,  // 250 dps nominal in many APIs.
-    Dps500 = 0x04,
-    Dps1000 = 0x08,
-    Dps2000 = 0x0C,
-  };
-
-  explicit Lsm6ds3(std::string bus_path = "/dev/i2c-1", uint8_t address = 0x6A,
-                   unsigned int retries = 2);
-  ~Lsm6ds3();
-
-  Lsm6ds3(const Lsm6ds3&) = delete;
-  Lsm6ds3& operator=(const Lsm6ds3&) = delete;
+  Lsm6ds3Spi(const Lsm6ds3Spi&) = delete;
+  Lsm6ds3Spi& operator=(const Lsm6ds3Spi&) = delete;
 
   void begin();
   void close(bool power_down = true) noexcept;
@@ -85,7 +55,7 @@ class Lsm6ds3 {
   [[nodiscard]] double accel_lsb_to_mps2_locked() const;
   [[nodiscard]] double gyro_lsb_to_rads_locked() const;
 
-  std::unique_ptr<LinuxI2c> i2c_;
+  std::unique_ptr<LinuxSpi> spi_;
   bool initialized_;
 
   AccelOdr accel_odr_;

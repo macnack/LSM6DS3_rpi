@@ -19,10 +19,15 @@ def clear_package_modules():
   yield
 
 
-def install_fake_extension(monkeypatch, sensor_cls):
+def install_fake_extension(monkeypatch, sensor_cls, spi_sensor_cls=None):
+  if spi_sensor_cls is None:
+    spi_sensor_cls = sensor_cls
+
   fake_ext = types.ModuleType("lsm6ds3_rpi._lsm6ds3")
   fake_ext.Lsm6ds3 = sensor_cls
+  fake_ext.Lsm6ds3Spi = spi_sensor_cls
   fake_ext.I2cError = RuntimeError
+  fake_ext.SpiError = RuntimeError
   fake_ext.AccelOdr = object
   fake_ext.GyroOdr = object
   fake_ext.AccelScale = object
@@ -59,6 +64,59 @@ def test_cli_stream_outputs_header_and_closes_on_interrupt(monkeypatch, capsys):
   out = capsys.readouterr().out
   assert pkg.Lsm6ds3 is FakeSensor
   assert "timestamp,ax,ay,az,gx,gy,gz" in out
+
+
+def test_cli_stream_can_select_spi_interface(monkeypatch):
+  class FakeI2cSensor:
+    def __init__(self, *args, **kwargs):
+      self.close_calls = 0
+
+    def begin(self):
+      return None
+
+    def read_accel(self):
+      return (0.0, 0.0, 0.0)
+
+    def read_gyro(self):
+      raise KeyboardInterrupt
+
+    def close(self, power_down=True):
+      self.close_calls += 1
+      return None
+
+  class FakeSpiSensor:
+    init_calls = 0
+
+    def __init__(self, *args, **kwargs):
+      FakeSpiSensor.init_calls += 1
+      self.close_calls = 0
+
+    def begin(self):
+      return None
+
+    def read_accel(self):
+      return (1.0, 2.0, 3.0)
+
+    def read_gyro(self):
+      raise KeyboardInterrupt
+
+    def close(self, power_down=True):
+      self.close_calls += 1
+      return None
+
+  install_fake_extension(monkeypatch, FakeI2cSensor, FakeSpiSensor)
+  cli = importlib.import_module("lsm6ds3_rpi.cli")
+  monkeypatch.setattr("sys.argv", [
+      "lsm6ds3-stream",
+      "--interface", "spi",
+      "--spi-device", "/dev/spidev0.0",
+      "--spi-speed", "2000000",
+      "--spi-mode", "3",
+      "--hz", "100",
+  ])
+
+  assert cli.main() == 0
+  assert FakeSpiSensor.init_calls == 1
 
 
 def test_cli_rejects_non_positive_hz(monkeypatch):
