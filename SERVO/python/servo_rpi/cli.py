@@ -212,17 +212,19 @@ def _cleanup_all(use_lock: bool) -> None:
 
 
 def pwm_multi_cycle_main(argv: list[str] | None = None) -> int:
+    args = _parse_multi_args(argv)
+    use_lock = not args.no_lock
+
+    def _handle_signal(signum: int, _frame: object) -> None:
+        print(f"Received signal {signum}, stopping...")
+        _cleanup_all(use_lock=use_lock)
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
     try:
-        args = _parse_multi_args(argv)
         ensure_pwm_permissions()
-
-        def _handle_signal(signum: int, _frame: object) -> None:
-            print(f"Received signal {signum}, stopping...")
-            _cleanup_all(use_lock=not args.no_lock)
-            raise SystemExit(0)
-
-        signal.signal(signal.SIGINT, _handle_signal)
-        signal.signal(signal.SIGTERM, _handle_signal)
 
         cycle = 0
         while True:
@@ -232,13 +234,20 @@ def pwm_multi_cycle_main(argv: list[str] | None = None) -> int:
                     f"Setting duty={duty} (period={args.period}) on GPIOs: {' '.join(map(str, GPIOS))}"
                 )
                 for gpio in GPIOS:
-                    set_pwm(gpio, args.period, duty, use_lock=not args.no_lock)
+                    set_pwm(gpio, args.period, duty, use_lock=use_lock)
                 time.sleep(args.wait_s)
 
             if args.cycles > 0 and cycle >= args.cycles:
                 break
 
         return 0
+    except KeyboardInterrupt:
+        print("Interrupted, stopping...")
+        _cleanup_all(use_lock=use_lock)
+        return 130
+    except SystemExit:
+        return 0
     except Exception as exc:
         print(f"ERROR: {_format_error(exc)}", file=sys.stderr)
+        _cleanup_all(use_lock=use_lock)
         return 1
