@@ -1,40 +1,23 @@
 cmake_minimum_required(VERSION 3.20)
-project(lsm6ds3_rpi LANGUAGES CXX)
+project(rpi_sensors_superbuild LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+option(BUILD_IMU "Build the IMU (LSM6DS3-family) library and examples" ON)
+option(BUILD_BARO "Build the barometer (BMP390) library and examples" ON)
+option(BUILD_SERVO "Build the hardware PWM servo library and examples" ON)
 
-option(LSM6DS3_BUILD_PYTHON "Build pybind11 module" ON)
+# Default to C++-only builds at the top level. Enable explicitly if needed.
+set(LSM6DS3_BUILD_PYTHON OFF CACHE BOOL "Build pybind11 module for IMU" )
+set(BMP390_BUILD_PYTHON OFF CACHE BOOL "Build pybind11 module for BARO" )
+set(SERVO_BUILD_PYTHON OFF CACHE BOOL "Build pybind11 module for SERVO" )
 
-add_library(lsm6ds3 STATIC
-  src/linux_i2c.cpp
-  src/lsm6ds3.cpp
-)
-
-set_target_properties(lsm6ds3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-target_include_directories(lsm6ds3
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-)
-
-target_compile_options(lsm6ds3 PRIVATE -Wall -Wextra -Wpedantic)
-
-
-add_executable(lsm6ds3_read_once examples/read_once.cpp)
-target_link_libraries(lsm6ds3_read_once PRIVATE lsm6ds3)
-
-if(LSM6DS3_BUILD_PYTHON)
-  find_package(pybind11 CONFIG REQUIRED)
-
-  pybind11_add_module(_lsm6ds3 src/pybind_module.cpp)
-  target_link_libraries(_lsm6ds3 PRIVATE lsm6ds3)
-  target_include_directories(_lsm6ds3 PRIVATE include)
-
-  install(TARGETS _lsm6ds3 LIBRARY DESTINATION lsm6ds3_rpi)
+if(BUILD_IMU)
+  add_subdirectory(IMU)
 endif()
 
-install(TARGETS lsm6ds3 ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
-install(DIRECTORY include/ DESTINATION include)
+if(BUILD_BARO)
+  add_subdirectory(BARO)
+endif()
+
+if(BUILD_SERVO)
+  add_subdirectory(SERVO)
+endif()

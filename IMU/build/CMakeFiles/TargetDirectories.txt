@@ -1,0 +1,9 @@
+/Users/mackop/Documents/GitHub/LSM6DS3_rpi/IMU/build/CMakeFiles/lsm6ds3.dir
+/Users/mackop/Documents/GitHub/LSM6DS3_rpi/IMU/build/CMakeFiles/lsm6ds3_read_once.dir
+/Users/mackop/Documents/GitHub/LSM6DS3_rpi/IMU/build/CMakeFiles/lsm6ds3_read_once_spi.dir
+/Users/mackop/Documents/GitHub/LSM6DS3_rpi/IMU/build/CMakeFiles/edit_cache.dir
+/Users/mackop/Documents/GitHub/LSM6DS3_rpi/IMU/build/CMakeFiles/rebuild_cache.dir
+/Users/mackop/Documents/GitHub/LSM6DS3_rpi/IMU/build/CMakeFiles/list_install_components.dir
+/Users/mackop/Documents/GitHub/LSM6DS3_rpi/IMU/build/CMakeFiles/install.dir
+/Users/mackop/Documents/GitHub/LSM6DS3_rpi/IMU/build/CMakeFiles/install/local.dir
+/Users/mackop/Documents/GitHub/LSM6DS3_rpi/IMU/build/CMakeFiles/install/strip.dir

@@ -1,0 +1,2 @@
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc liblsm6ds3.a CMakeFiles/lsm6ds3.dir/src/linux_i2c.cpp.o CMakeFiles/lsm6ds3.dir/src/linux_spi.cpp.o CMakeFiles/lsm6ds3.dir/src/lsm6ds3.cpp.o CMakeFiles/lsm6ds3.dir/src/lsm6ds3_spi.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib liblsm6ds3.a

@@ -1,0 +1,34 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "servo_rpi"
+version = "0.1.0"
+description = "Production-grade Linux hardware PWM servo library and Python bindings for Raspberry Pi 5"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{name = "servo contributors"}]
+license = {text = "MIT"}
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: C++",
+  "Operating System :: POSIX :: Linux",
+]
+
+[tool.scikit-build]
+wheel.packages = ["python/servo_rpi"]
+cmake.build-type = "Release"
+
+[tool.scikit-build.cmake.define]
+SERVO_BUILD_PYTHON = "ON"
+
+[project.scripts]
+servo-pwm-set = "servo_rpi.cli:pwmset_main"
+servo-pwm-multi-cycle = "servo_rpi.cli:pwm_multi_cycle_main"
+
+[tool.cibuildwheel]
+build = ["cp313-manylinux_aarch64"]
+archs = ["aarch64"]
+skip = ["*-musllinux*"]

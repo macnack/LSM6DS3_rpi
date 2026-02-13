@@ -1,74 +1,99 @@
-# lsm6ds3_rpi
+# Raspberry Pi IMU + BARO + SERVO Superbuild
 
-Linux-first C++17 and Python 3.13 library for ST LSM6DS3 over I2C on Raspberry Pi 5.
+This repository contains:
 
-## Features
+- `IMU/`: LSM6DS3-family IMU library (I2C + SPI).
+- `BARO/`: BMP390 barometer library (I2C).
+- `SERVO/`: Hardware PWM servo library (Raspberry Pi 5 Linux).
 
-- I2C-only driver using `ioctl(I2C_RDWR)` combined transactions.
-- WHO_AM_I validation (`0x0F == 0x69` for LSM6DS3 or `0x6B` for LSM6DSR) during startup.
-- Default bus `/dev/i2c-1`, default address `0x6A`.
-- Burst reads (6 bytes) for accel and gyro with register auto-increment.
-- Thread-safe Linux transport with retries for transient I/O failures.
-- Python bindings via pybind11 and scikit-build-core.
+Each subproject can be built independently, or you can build all enabled modules at once from the repo root.
 
-## Raspberry Pi I2C setup
+## Build Both (C++)
 
-1. Enable I2C:
-   ```bash
-   sudo raspi-config nonint do_i2c 0
-   sudo reboot
-   ```
-2. Verify bus/device:
-   ```bash
-   ls /dev/i2c-1
-   sudo i2cdetect -y 1
-   ```
-3. Typical wiring:
-   - `3V3` -> LSM6DS3 `VDD`
-   - `GND` -> `GND`
-   - `GPIO2/SDA1` -> `SDA`
-   - `GPIO3/SCL1` -> `SCL`
-   - `SA0` low => `0x6A`, high => `0x6B`
+From the repository root:
 
-## Build Python package (PEP 668-safe on Raspberry Pi OS)
+```bash
+cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=OFF -DBMP390_BUILD_PYTHON=OFF -DSERVO_BUILD_PYTHON=OFF
+cmake --build build -j
+```
 
-Raspberry Pi OS marks system Python as externally managed, so use a virtual environment:
+Executables will be in `build/`, for example:
+
+- `build/lsm6ds3_read_once`
+- `build/lsm6ds3_read_once_spi`
+- `build/bmp390_read_once`
+- `build/servo_set_pulse`
+
+## Build Only One
+
+IMU only:
+
+```bash
+cmake -S . -B build -DBUILD_IMU=ON -DBUILD_BARO=OFF
+cmake --build build -j
+```
+
+BARO only:
+
+```bash
+cmake -S . -B build -DBUILD_IMU=OFF -DBUILD_BARO=ON
+cmake --build build -j
+```
+
+SERVO only:
+
+```bash
+cmake -S . -B build -DBUILD_IMU=OFF -DBUILD_BARO=OFF -DBUILD_SERVO=ON
+cmake --build build -j
+```
+
+## Python Modules (Optional)
+
+If you want the Python modules at the root build, enable them explicitly and make sure `pybind11` is available in your environment:
+
+```bash
+cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=ON -DBMP390_BUILD_PYTHON=ON -DSERVO_BUILD_PYTHON=ON
+cmake --build build -j
+```
+
+## Python Packages (PEP 668-safe on Raspberry Pi OS)
+
+You can use a single venv at the repo root, then build wheels in each subproject:
+
+```bash
+python3.13 -m venv .venv
+. .venv/bin/activate
+python -m pip install -U pip build
+
+cd IMU
+python -m build
+python -m pip install dist/lsm6ds3_rpi-*.whl
+
+cd ../BARO
+python -m build
+python -m pip install dist/bmp390_rpi-*.whl
+```
+
+### One-Command Root Build (emits all wheels)
+
+The root `pyproject.toml` includes a custom build hook that runs `python -m build` in `IMU/`, `BARO/`, and `SERVO/` and places all wheels into the root `dist/` folder. It also creates a small `rpi_sensors` wheel (metadata only).
 
 ```bash
 python3.13 -m venv .venv
 . .venv/bin/activate
 python -m pip install -U pip build
 python -m build
-python -m pip install dist/lsm6ds3_rpi-*.whl
 ```
 
-If you intentionally install into system Python, you must pass `--break-system-packages` (not recommended).
+Outputs in `dist/`:
 
-## Run CLI streamer
+- `rpi_sensors-*.whl`
+- `lsm6ds3_rpi-*.whl`
+- `bmp390_rpi-*.whl`
+- `servo_rpi-*.whl`
 
-```bash
-lsm6ds3-stream --bus /dev/i2c-1 --address 0x6A --hz 20
-```
+For more Python packaging and runtime usage details, see:
 
-Output format:
-
-```text
-timestamp,ax,ay,az,gx,gy,gz
-```
-
-- `a*` in m/s²
-- `g*` in rad/s
-
-## C++ example (robust, one-shot read)
-
-A complete example is available at `examples/read_once.cpp` with exception handling and explicit shutdown.
-
-Build and run it after building the static library:
-
-```bash
-cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=OFF
-cmake --build build -j
-./build/lsm6ds3_read_once
-```
-
-It prints one accel sample (m/s²) and one gyro sample (rad/s).
+- `IMU/README.md`
+- `BARO/README.md`
+- `SERVO/README.md`
