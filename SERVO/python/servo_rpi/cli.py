@@ -146,9 +146,9 @@ def _parse_pwmset_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Disable per-channel lock file (use only if lock file path is not writable).",
     )
     parser.add_argument(
-        "--skip-pinctrl",
+        "--pinctrl",
         action="store_true",
-        help="Skip `pinctrl set`; use when pin mux is preconfigured by overlay/boot setup.",
+        help="Enable runtime `pinctrl set` calls (default is disabled).",
     )
     return parser.parse_args(argv)
 
@@ -168,7 +168,7 @@ def _format_error(exc: Exception) -> str:
 
 def pwmset_main(argv: list[str] | None = None) -> int:
     args = _parse_pwmset_args(argv)
-    use_pinctrl = not args.skip_pinctrl and (os.environ.get("SERVO_PWM_SKIP_PINCTRL", "0") != "1")
+    use_pinctrl = args.pinctrl or (os.environ.get("SERVO_PWM_PINCTRL", "0") == "1")
     try:
         ensure_pwm_permissions()
         if args.period == "off":
@@ -210,9 +210,9 @@ def _parse_multi_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Disable per-channel lock file (use only if lock file path is not writable).",
     )
     parser.add_argument(
-        "--skip-pinctrl",
+        "--pinctrl",
         action="store_true",
-        help="Skip `pinctrl set`; use when pin mux is preconfigured by overlay/boot setup.",
+        help="Enable runtime `pinctrl set` calls (default is disabled).",
     )
     return parser.parse_args(argv)
 
@@ -229,7 +229,7 @@ def _cleanup_all(use_lock: bool, use_pinctrl: bool) -> None:
 def pwm_multi_cycle_main(argv: list[str] | None = None) -> int:
     args = _parse_multi_args(argv)
     use_lock = not args.no_lock
-    use_pinctrl = not args.skip_pinctrl and (os.environ.get("SERVO_PWM_SKIP_PINCTRL", "0") != "1")
+    use_pinctrl = args.pinctrl or (os.environ.get("SERVO_PWM_PINCTRL", "0") == "1")
 
     def _handle_signal(signum: int, _frame: object) -> None:
         print(f"Received signal {signum}, stopping...")

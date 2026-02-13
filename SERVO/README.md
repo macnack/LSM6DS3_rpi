@@ -52,9 +52,10 @@ Do a one-time permission setup, then run normal commands without `sudo`.
    sudo udevadm trigger
    ```
 3. Re-login (or reboot).
-4. If pin mux is already configured by overlay, skip runtime `pinctrl`:
+4. Runtime `pinctrl` is disabled by default (recommended for non-root when overlay already configures mux).
+   Enable it only if you explicitly need runtime mux switching:
    ```bash
-   export SERVO_PWM_SKIP_PINCTRL=1
+   export SERVO_PWM_PINCTRL=1
    ```
 
 Pin/function mapping used by included examples:
@@ -110,9 +111,9 @@ servo-pwm-multi-cycle
 servo-pwm-set --no-lock 12 20000000 1500000
 servo-pwm-multi-cycle --no-lock
 
-# If pin mux is preconfigured and you run without root:
-servo-pwm-set --skip-pinctrl 12 20000000 1500000
-servo-pwm-multi-cycle --skip-pinctrl
+# Runtime pinctrl is OFF by default. Enable only when needed:
+servo-pwm-set --pinctrl 12 20000000 1500000
+servo-pwm-multi-cycle --pinctrl
 
 # Or run wrappers from examples/
 python3 examples/pwmset.py 12 20000000 1500000
