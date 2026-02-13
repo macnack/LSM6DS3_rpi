@@ -59,6 +59,15 @@ Do a one-time permission setup, then run normal commands without `sudo`.
      [ -d /sys/class/pwm/pwmchip0/pwm$ch ] && echo "$ch" | sudo tee /sys/class/pwm/pwmchip0/unexport >/dev/null
    done
    ```
+   Optional: enable boot-time pre-export service so manual export is never needed:
+   ```bash
+   sudo cp ./rpi_config/pwm/pwm_service/pwm4-preexport.sh /usr/local/sbin/
+   sudo chmod +x /usr/local/sbin/pwm4-preexport.sh
+   sudo cp ./rpi_config/pwm/pwm_service/pwm4-preexport.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable pwm4-preexport.service
+   sudo reboot
+   ```
 4. Runtime `pinctrl` is disabled by default (recommended for non-root when overlay already configures mux).
    Enable it only if you explicitly need runtime mux switching:
    ```bash
@@ -133,6 +142,10 @@ servo-pwm-multi-cycle --pinctrl
 python3 examples/pwmset.py 12 20000000 1500000
 python3 examples/pwm_multi_cycle.py
 ```
+
+Notes:
+- `servo-pwm-set <pin> off` disables and unexports that channel.
+- `servo-pwm-multi-cycle` cleanup disables channels but keeps them exported for faster/reliable restart.
 
 ## Build wheel (Python 3.13)
 

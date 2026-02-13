@@ -75,7 +75,11 @@ def _dbg(enabled: bool, message: str) -> None:
 
 
 def disable_pwm(
-    pin: int, use_lock: bool = True, use_pinctrl: bool = True, debug: bool = False
+    pin: int,
+    use_lock: bool = True,
+    use_pinctrl: bool = True,
+    debug: bool = False,
+    unexport_on_disable: bool = False,
 ) -> None:
     mapping = PIN_MAP[pin]
     chip_path = first_pwmchip_path()
@@ -96,7 +100,7 @@ def disable_pwm(
         (
             f"disable pin={pin} chip={chip_index} channel={mapping.channel} "
             f"channel_path={channel_path} use_lock={use_lock} use_pinctrl={use_pinctrl} "
-            f"lock_dir='{cfg.lock_dir or 'auto'}'"
+            f"lock_dir='{cfg.lock_dir or 'auto'}' unexport_on_disable={unexport_on_disable}"
         ),
     )
     _dbg(debug, f"will write: {channel_path}/enable <- 0")
@@ -110,7 +114,7 @@ def disable_pwm(
     if use_pinctrl:
         _dbg(debug, f"pinctrl set {pin} no")
 
-    if os.path.isdir(channel_path):
+    if unexport_on_disable and os.path.isdir(channel_path):
         try:
             _dbg(debug, f"will write: {chip_path}/unexport <- {mapping.channel}")
             unexport_channel(chip_path, mapping.channel)
@@ -219,7 +223,11 @@ def pwmset_main(argv: list[str] | None = None) -> int:
         ensure_pwm_permissions()
         if args.period == "off":
             disable_pwm(
-                args.pin, use_lock=not args.no_lock, use_pinctrl=use_pinctrl, debug=args.debug
+                args.pin,
+                use_lock=not args.no_lock,
+                use_pinctrl=use_pinctrl,
+                debug=args.debug,
+                unexport_on_disable=True,
             )
             return 0
 
@@ -281,7 +289,13 @@ def _cleanup_all(use_lock: bool, use_pinctrl: bool, debug: bool) -> None:
     print("Disabling PWM outputs...")
     for gpio in GPIOS:
         try:
-            disable_pwm(gpio, use_lock=use_lock, use_pinctrl=use_pinctrl, debug=debug)
+            disable_pwm(
+                gpio,
+                use_lock=use_lock,
+                use_pinctrl=use_pinctrl,
+                debug=debug,
+                unexport_on_disable=False,
+            )
         except Exception:
             pass
 
