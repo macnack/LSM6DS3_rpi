@@ -21,3 +21,13 @@ packages = ["rpi_sensors"]
 
 [tool.hatch.build.hooks.custom]
 path = "tools/build_hook.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "README.md",
+  "pyproject.toml",
+  "rpi_sensors/**",
+  "tools/build_hook.py",
+  "IMU/**",
+  "BARO/**",
+]
