@@ -30,4 +30,5 @@ include = [
   "tools/build_hook.py",
   "IMU/**",
   "BARO/**",
+  "SERVO/**",
 ]

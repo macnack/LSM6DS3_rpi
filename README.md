@@ -1,18 +1,19 @@
-# Raspberry Pi IMU + BARO Superbuild
+# Raspberry Pi IMU + BARO + SERVO Superbuild
 
 This repository contains:
 
 - `IMU/`: LSM6DS3-family IMU library (I2C + SPI).
 - `BARO/`: BMP390 barometer library (I2C).
+- `SERVO/`: Hardware PWM servo library (Raspberry Pi 5 Linux).
 
-Each subproject can be built independently, or you can build both at once from the repo root.
+Each subproject can be built independently, or you can build all enabled modules at once from the repo root.
 
 ## Build Both (C++)
 
 From the repository root:
 
 ```bash
-cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=OFF -DBMP390_BUILD_PYTHON=OFF
+cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=OFF -DBMP390_BUILD_PYTHON=OFF -DSERVO_BUILD_PYTHON=OFF
 cmake --build build -j
 ```
 
@@ -21,6 +22,7 @@ Executables will be in `build/`, for example:
 - `build/lsm6ds3_read_once`
 - `build/lsm6ds3_read_once_spi`
 - `build/bmp390_read_once`
+- `build/servo_set_pulse`
 
 ## Build Only One
 
@@ -38,12 +40,19 @@ cmake -S . -B build -DBUILD_IMU=OFF -DBUILD_BARO=ON
 cmake --build build -j
 ```
 
+SERVO only:
+
+```bash
+cmake -S . -B build -DBUILD_IMU=OFF -DBUILD_BARO=OFF -DBUILD_SERVO=ON
+cmake --build build -j
+```
+
 ## Python Modules (Optional)
 
 If you want the Python modules at the root build, enable them explicitly and make sure `pybind11` is available in your environment:
 
 ```bash
-cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=ON -DBMP390_BUILD_PYTHON=ON
+cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=ON -DBMP390_BUILD_PYTHON=ON -DSERVO_BUILD_PYTHON=ON
 cmake --build build -j
 ```
 
@@ -65,9 +74,9 @@ python -m build
 python -m pip install dist/bmp390_rpi-*.whl
 ```
 
-### One-Command Root Build (emits both wheels)
+### One-Command Root Build (emits all wheels)
 
-The root `pyproject.toml` includes a custom build hook that runs `python -m build` in `IMU/` and `BARO/` and places both wheels into the root `dist/` folder. It also creates a small `rpi_sensors` wheel (metadata only).
+The root `pyproject.toml` includes a custom build hook that runs `python -m build` in `IMU/`, `BARO/`, and `SERVO/` and places all wheels into the root `dist/` folder. It also creates a small `rpi_sensors` wheel (metadata only).
 
 ```bash
 python3.13 -m venv .venv
@@ -81,8 +90,10 @@ Outputs in `dist/`:
 - `rpi_sensors-*.whl`
 - `lsm6ds3_rpi-*.whl`
 - `bmp390_rpi-*.whl`
+- `servo_rpi-*.whl`
 
 For more Python packaging and runtime usage details, see:
 
 - `IMU/README.md`
 - `BARO/README.md`
+- `SERVO/README.md`

@@ -19,13 +19,13 @@ class BuildHook(BuildHookInterface):
         dist_dir = root / "dist"
         dist_dir.mkdir(parents=True, exist_ok=True)
 
-        subprojects = [root / "IMU", root / "BARO"]
+        subprojects = [root / "IMU", root / "BARO", root / "SERVO"]
 
         for subproject in subprojects:
             if not subproject.exists():
                 raise FileNotFoundError(
                     f"Missing subproject directory: {subproject}. "
-                    "Ensure IMU/ and BARO/ are included in the sdist."
+                    "Ensure IMU/, BARO/, and SERVO/ are included in the sdist."
                 )
             subprocess.run(
                 [
