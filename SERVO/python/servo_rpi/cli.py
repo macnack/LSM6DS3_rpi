@@ -69,7 +69,14 @@ def unexport_channel(chip_path: str, channel: int) -> None:
         fh.write(str(channel))
 
 
-def disable_pwm(pin: int, use_lock: bool = True, use_pinctrl: bool = True) -> None:
+def _dbg(enabled: bool, message: str) -> None:
+    if enabled:
+        print(f"DEBUG: {message}")
+
+
+def disable_pwm(
+    pin: int, use_lock: bool = True, use_pinctrl: bool = True, debug: bool = False
+) -> None:
     mapping = PIN_MAP[pin]
     chip_path = first_pwmchip_path()
     chip_index = parse_chip_index(chip_path)
@@ -82,6 +89,17 @@ def disable_pwm(pin: int, use_lock: bool = True, use_pinctrl: bool = True) -> No
     cfg.unexport_on_close = False
     cfg.use_channel_lock = use_lock
     cfg.lock_dir = os.environ.get("SERVO_PWM_LOCK_DIR", "")
+    channel_path = os.path.join(chip_path, f"pwm{mapping.channel}")
+
+    _dbg(
+        debug,
+        (
+            f"disable pin={pin} chip={chip_index} channel={mapping.channel} "
+            f"channel_path={channel_path} use_lock={use_lock} use_pinctrl={use_pinctrl} "
+            f"lock_dir='{cfg.lock_dir or 'auto'}'"
+        ),
+    )
+    _dbg(debug, f"will write: {channel_path}/enable <- 0")
 
     pwm = HardwarePwm(cfg)
     pwm.begin()
@@ -89,16 +107,25 @@ def disable_pwm(pin: int, use_lock: bool = True, use_pinctrl: bool = True) -> No
     pwm.close()
 
     run_pinctrl(pin, "no", use_pinctrl=use_pinctrl)
+    if use_pinctrl:
+        _dbg(debug, f"pinctrl set {pin} no")
 
-    channel_path = os.path.join(chip_path, f"pwm{mapping.channel}")
     if os.path.isdir(channel_path):
         try:
+            _dbg(debug, f"will write: {chip_path}/unexport <- {mapping.channel}")
             unexport_channel(chip_path, mapping.channel)
         except OSError:
             pass
 
 
-def set_pwm(pin: int, period_ns: int, duty_ns: int, use_lock: bool = True, use_pinctrl: bool = True) -> None:
+def set_pwm(
+    pin: int,
+    period_ns: int,
+    duty_ns: int,
+    use_lock: bool = True,
+    use_pinctrl: bool = True,
+    debug: bool = False,
+) -> None:
     if period_ns <= 0 or duty_ns < 0:
         raise ValueError("period_ns must be > 0 and duty_ns must be >= 0")
     if duty_ns > period_ns:
@@ -120,6 +147,20 @@ def set_pwm(pin: int, period_ns: int, duty_ns: int, use_lock: bool = True, use_p
     cfg.unexport_on_close = False
     cfg.use_channel_lock = use_lock
     cfg.lock_dir = os.environ.get("SERVO_PWM_LOCK_DIR", "")
+    channel_path = os.path.join(chip_path, f"pwm{mapping.channel}")
+
+    _dbg(
+        debug,
+        (
+            f"set pin={pin} chip={chip_index} channel={mapping.channel} "
+            f"channel_path={channel_path} use_lock={use_lock} use_pinctrl={use_pinctrl} "
+            f"lock_dir='{cfg.lock_dir or 'auto'}'"
+        ),
+    )
+    _dbg(debug, f"will write: {chip_path}/export <- {mapping.channel} (if not exported)")
+    _dbg(debug, f"will write: {channel_path}/period <- {period_ns}")
+    _dbg(debug, f"will write: {channel_path}/duty_cycle <- {duty_ns}")
+    _dbg(debug, f"will write: {channel_path}/enable <- 1")
 
     pwm = HardwarePwm(cfg)
     pwm.begin()
@@ -150,6 +191,11 @@ def _parse_pwmset_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Enable runtime `pinctrl set` calls (default is disabled).",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print detailed debug information including sysfs paths.",
+    )
     return parser.parse_args(argv)
 
 
@@ -172,7 +218,9 @@ def pwmset_main(argv: list[str] | None = None) -> int:
     try:
         ensure_pwm_permissions()
         if args.period == "off":
-            disable_pwm(args.pin, use_lock=not args.no_lock, use_pinctrl=use_pinctrl)
+            disable_pwm(
+                args.pin, use_lock=not args.no_lock, use_pinctrl=use_pinctrl, debug=args.debug
+            )
             return 0
 
         if args.duty is None:
@@ -180,7 +228,14 @@ def pwmset_main(argv: list[str] | None = None) -> int:
 
         period_ns = int(args.period)
         duty_ns = int(args.duty)
-        set_pwm(args.pin, period_ns, duty_ns, use_lock=not args.no_lock, use_pinctrl=use_pinctrl)
+        set_pwm(
+            args.pin,
+            period_ns,
+            duty_ns,
+            use_lock=not args.no_lock,
+            use_pinctrl=use_pinctrl,
+            debug=args.debug,
+        )
         return 0
     except Exception as exc:
         print(f"ERROR: {_format_error(exc)}", file=sys.stderr)
@@ -214,14 +269,19 @@ def _parse_multi_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Enable runtime `pinctrl set` calls (default is disabled).",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print detailed debug information including sysfs paths.",
+    )
     return parser.parse_args(argv)
 
 
-def _cleanup_all(use_lock: bool, use_pinctrl: bool) -> None:
+def _cleanup_all(use_lock: bool, use_pinctrl: bool, debug: bool) -> None:
     print("Disabling PWM outputs...")
     for gpio in GPIOS:
         try:
-            disable_pwm(gpio, use_lock=use_lock, use_pinctrl=use_pinctrl)
+            disable_pwm(gpio, use_lock=use_lock, use_pinctrl=use_pinctrl, debug=debug)
         except Exception:
             pass
 
@@ -233,7 +293,7 @@ def pwm_multi_cycle_main(argv: list[str] | None = None) -> int:
 
     def _handle_signal(signum: int, _frame: object) -> None:
         print(f"Received signal {signum}, stopping...")
-        _cleanup_all(use_lock=use_lock, use_pinctrl=use_pinctrl)
+        _cleanup_all(use_lock=use_lock, use_pinctrl=use_pinctrl, debug=args.debug)
         raise SystemExit(0)
 
     signal.signal(signal.SIGINT, _handle_signal)
@@ -250,7 +310,14 @@ def pwm_multi_cycle_main(argv: list[str] | None = None) -> int:
                     f"Setting duty={duty} (period={args.period}) on GPIOs: {' '.join(map(str, GPIOS))}"
                 )
                 for gpio in GPIOS:
-                    set_pwm(gpio, args.period, duty, use_lock=use_lock, use_pinctrl=use_pinctrl)
+                    set_pwm(
+                        gpio,
+                        args.period,
+                        duty,
+                        use_lock=use_lock,
+                        use_pinctrl=use_pinctrl,
+                        debug=args.debug,
+                    )
                 time.sleep(args.wait_s)
 
             if args.cycles > 0 and cycle >= args.cycles:
@@ -259,11 +326,11 @@ def pwm_multi_cycle_main(argv: list[str] | None = None) -> int:
         return 0
     except KeyboardInterrupt:
         print("Interrupted, stopping...")
-        _cleanup_all(use_lock=use_lock, use_pinctrl=use_pinctrl)
+        _cleanup_all(use_lock=use_lock, use_pinctrl=use_pinctrl, debug=args.debug)
         return 130
     except SystemExit:
         return 0
     except Exception as exc:
         print(f"ERROR: {_format_error(exc)}", file=sys.stderr)
-        _cleanup_all(use_lock=use_lock, use_pinctrl=use_pinctrl)
+        _cleanup_all(use_lock=use_lock, use_pinctrl=use_pinctrl, debug=args.debug)
         return 1

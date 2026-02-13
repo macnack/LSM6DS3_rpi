@@ -101,11 +101,17 @@ Run:
 # One channel
 servo-pwm-set 12 20000000 1500000
 
+# One channel with debug paths
+servo-pwm-set --debug 12 20000000 1500000
+
 # Stop one channel
 servo-pwm-set 12 off
 
 # Multi-channel loop
 servo-pwm-multi-cycle
+
+# Multi-channel loop with debug paths
+servo-pwm-multi-cycle --debug
 
 # If lock-file creation fails (for example /tmp policy), disable lock file:
 servo-pwm-set --no-lock 12 20000000 1500000
