@@ -1,0 +1,30 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "bmp390_rpi"
+version = "0.1.0"
+description = "Production-grade Linux I2C driver and Python bindings for Bosch BMP390"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{name = "BMP390 contributors"}]
+license = {text = "BSD-3-Clause"}
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: C++",
+  "Operating System :: POSIX :: Linux",
+]
+
+[tool.scikit-build]
+wheel.packages = ["python/bmp390_rpi"]
+cmake.build-type = "Release"
+
+[tool.scikit-build.cmake.define]
+BMP390_BUILD_PYTHON = "ON"
+
+[tool.cibuildwheel]
+build = ["cp313-manylinux_aarch64"]
+archs = ["aarch64"]
+skip = ["*-musllinux*"]
