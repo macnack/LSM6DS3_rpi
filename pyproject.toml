@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling>=1.27", "build>=1.2", "packaging>=24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rpi_sensors"
+version = "0.1.0"
+description = "Meta package + root build hook for IMU (LSM6DS3) and BARO (BMP390)"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{name = "RPI Sensors contributors"}]
+license = {text = "MIT"}
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: POSIX :: Linux",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["rpi_sensors"]
+
+[tool.hatch.build.hooks.custom]
+path = "tools/build_hook.py"
