@@ -24,6 +24,9 @@ cmake.build-type = "Release"
 [tool.scikit-build.cmake.define]
 BMP390_BUILD_PYTHON = "ON"
 
+[project.scripts]
+bmp390-stream = "bmp390_rpi.cli:main"
+
 [tool.cibuildwheel]
 build = ["cp313-manylinux_aarch64"]
 archs = ["aarch64"]

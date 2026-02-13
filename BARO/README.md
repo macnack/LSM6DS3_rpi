@@ -40,3 +40,15 @@ reading = sensor.read()
 print(reading.temperature_c, reading.pressure_pa)
 sensor.close()
 ```
+
+## Run CLI streamer
+
+```bash
+bmp390-stream --bus /dev/i2c-1 --address 0x77 --hz 20
+```
+
+CSV output columns:
+- `timestamp`: Unix epoch seconds (float)
+- `temperature_c`: Temperature in Celsius
+- `pressure_pa`: Pressure in Pascal
+- `pressure_hpa`: Pressure in hectopascal
