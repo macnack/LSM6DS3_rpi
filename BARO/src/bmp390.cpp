@@ -53,10 +53,10 @@ void Bmp390::begin() {
   i2c_->open();
   check_bmp_result(bmp3_init(dev_.get()), "bmp3_init");
 
-  if (dev_->chip_id != BMP3_CHIP_ID) {
+  if (dev_->chip_id != BMP390_CHIP_ID) {
     std::ostringstream oss;
     oss << "Unexpected BMP390 chip id: 0x" << std::hex << static_cast<int>(dev_->chip_id)
-        << ", expected 0x" << static_cast<int>(BMP3_CHIP_ID);
+        << ", expected 0x" << static_cast<int>(BMP390_CHIP_ID);
     throw std::runtime_error(oss.str());
   }
 
