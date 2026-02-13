@@ -79,6 +79,7 @@ def disable_pwm(pin: int, use_lock: bool = True) -> None:
     cfg.disable_on_close = True
     cfg.unexport_on_close = False
     cfg.use_channel_lock = use_lock
+    cfg.lock_dir = os.environ.get("SERVO_PWM_LOCK_DIR", "")
 
     pwm = HardwarePwm(cfg)
     pwm.begin()
@@ -116,6 +117,7 @@ def set_pwm(pin: int, period_ns: int, duty_ns: int, use_lock: bool = True) -> No
     cfg.disable_on_close = False
     cfg.unexport_on_close = False
     cfg.use_channel_lock = use_lock
+    cfg.lock_dir = os.environ.get("SERVO_PWM_LOCK_DIR", "")
 
     pwm = HardwarePwm(cfg)
     pwm.begin()

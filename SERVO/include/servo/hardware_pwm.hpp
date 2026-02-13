@@ -26,6 +26,7 @@ struct HardwarePwmConfig {
   bool disable_on_close = true;
   bool unexport_on_close = false;
   bool use_channel_lock = true;
+  std::string lock_dir;  // Empty means auto-select: /run/lock, /var/lock, /dev/shm, /tmp
   unsigned int retries = 3;
 };
 

@@ -18,6 +18,7 @@ PYBIND11_MODULE(_servo, m) {
       .def_readwrite("disable_on_close", &servo::HardwarePwmConfig::disable_on_close)
       .def_readwrite("unexport_on_close", &servo::HardwarePwmConfig::unexport_on_close)
       .def_readwrite("use_channel_lock", &servo::HardwarePwmConfig::use_channel_lock)
+      .def_readwrite("lock_dir", &servo::HardwarePwmConfig::lock_dir)
       .def_readwrite("retries", &servo::HardwarePwmConfig::retries);
 
   py::class_<servo::HardwarePwm>(m, "HardwarePwm")

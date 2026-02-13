@@ -12,6 +12,7 @@
 #include <sys/file.h>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 namespace servo {
 
@@ -112,25 +113,59 @@ uint64_t read_u64_file(const std::string& path) {
 
 class HardwarePwm::ChannelLock {
  public:
-  ChannelLock(uint32_t chip, uint32_t channel, bool enabled) : fd_(-1) {
+  ChannelLock(uint32_t chip, uint32_t channel, bool enabled, const std::string& lock_dir) : fd_(-1) {
     if (!enabled) {
       return;
     }
 
-    const std::string path = "/tmp/servo_pwmchip" + std::to_string(chip) + "_pwm" +
-                             std::to_string(channel) + ".lock";
-
-    fd_ = ::open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0644);
-    if (fd_ < 0) {
-      throw PwmError("Failed to open PWM lock file '" + path + "'", errno);
+    std::vector<std::string> lock_dirs;
+    if (!lock_dir.empty()) {
+      lock_dirs.push_back(lock_dir);
+    } else {
+      lock_dirs = {"/run/lock", "/var/lock", "/dev/shm", "/tmp"};
     }
 
-    if (::flock(fd_, LOCK_EX | LOCK_NB) < 0) {
-      const int err = errno;
-      (void)::close(fd_);
-      fd_ = -1;
-      throw PwmError("PWM channel lock already held for '" + path + "'", err);
+    const std::string lock_name = "servo_pwmchip" + std::to_string(chip) + "_pwm" +
+                                  std::to_string(channel) + ".lock";
+
+    int last_errno = 0;
+    std::string last_path;
+
+    for (const auto& dir : lock_dirs) {
+      const std::string path = dir + "/" + lock_name;
+      const int candidate_fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+      if (candidate_fd < 0) {
+        const int err = errno;
+        last_errno = err;
+        last_path = path;
+        if (err == EACCES || err == EPERM || err == ENOENT || err == ENOTDIR || err == EROFS) {
+          continue;
+        }
+        throw PwmError("Failed to open PWM lock file '" + path + "'", err);
+      }
+
+      if (::flock(candidate_fd, LOCK_EX | LOCK_NB) < 0) {
+        const int err = errno;
+        (void)::close(candidate_fd);
+        last_errno = err;
+        last_path = path;
+        if (err == EWOULDBLOCK || err == EAGAIN) {
+          throw PwmError("PWM channel lock already held for '" + path + "'", err);
+        }
+        if (err == EACCES || err == EPERM) {
+          continue;
+        }
+        throw PwmError("Failed to lock PWM lock file '" + path + "'", err);
+      }
+
+      fd_ = candidate_fd;
+      return;
     }
+
+    if (last_path.empty()) {
+      throw PwmError("No candidate lock directory available for PWM channel lock");
+    }
+    throw PwmError("Failed to open PWM lock file '" + last_path + "'", last_errno);
   }
 
   ~ChannelLock() {
@@ -173,7 +208,8 @@ void HardwarePwm::begin() {
     return;
   }
 
-  ChannelLock channel_lock(config_.chip, config_.channel, config_.use_channel_lock);
+  ChannelLock channel_lock(config_.chip, config_.channel, config_.use_channel_lock,
+                           config_.lock_dir);
 
   export_channel_locked();
   ensure_channel_path_locked();
@@ -197,7 +233,8 @@ void HardwarePwm::close() noexcept {
   }
 
   try {
-    ChannelLock channel_lock(config_.chip, config_.channel, config_.use_channel_lock);
+    ChannelLock channel_lock(config_.chip, config_.channel, config_.use_channel_lock,
+                             config_.lock_dir);
 
     if (open_ && config_.disable_on_close) {
       try {
@@ -226,7 +263,8 @@ bool HardwarePwm::is_open() const noexcept {
 void HardwarePwm::set_enabled(bool enabled) {
   std::scoped_lock lock(mutex_);
   ensure_open_locked();
-  ChannelLock channel_lock(config_.chip, config_.channel, config_.use_channel_lock);
+  ChannelLock channel_lock(config_.chip, config_.channel, config_.use_channel_lock,
+                           config_.lock_dir);
   write_enable_locked(enabled);
 }
 
@@ -235,7 +273,8 @@ void HardwarePwm::set_period_ns(uint64_t period_ns) {
   ensure_open_locked();
   ensure_valid_timing_locked(period_ns, config_.duty_cycle_ns);
 
-  ChannelLock channel_lock(config_.chip, config_.channel, config_.use_channel_lock);
+  ChannelLock channel_lock(config_.chip, config_.channel, config_.use_channel_lock,
+                           config_.lock_dir);
   const bool was_enabled = (read_u64_file(channel_path_locked() + "/enable") != 0ULL);
   write_enable_locked(false);
   write_period_locked(period_ns);
@@ -248,7 +287,8 @@ void HardwarePwm::set_duty_cycle_ns(uint64_t duty_cycle_ns) {
   ensure_open_locked();
   ensure_valid_timing_locked(config_.period_ns, duty_cycle_ns);
 
-  ChannelLock channel_lock(config_.chip, config_.channel, config_.use_channel_lock);
+  ChannelLock channel_lock(config_.chip, config_.channel, config_.use_channel_lock,
+                           config_.lock_dir);
   write_duty_locked(duty_cycle_ns);
 }
 

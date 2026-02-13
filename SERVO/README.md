@@ -67,6 +67,12 @@ Installed console scripts:
 - `servo-pwm-multi-cycle`
 
 Note: these CLI tools keep PWM enabled after each write so servo pulses continue between updates.
+By default, channel lock files are created in the first writable directory from:
+`/run/lock`, `/var/lock`, `/dev/shm`, `/tmp`.
+You can force a lock directory with:
+```bash
+export SERVO_PWM_LOCK_DIR=/run/lock
+```
 
 Run:
 
