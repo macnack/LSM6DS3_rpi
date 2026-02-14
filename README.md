@@ -112,6 +112,15 @@ If you want to interact with the runtime helpers (including `rt-status-report`),
 python3 -m pip install -e .
 ```
 
+The editable install also exposes the dummy worker scripts that mirror your C++ runtime modules. Once installed you can run:
+
+```bash
+dummy-controller --config runtime/config/rt_config.toml
+dummy-estimator --config runtime/config/rt_config.toml
+```
+
+Each script accepts `--duration-sec` if you want to stop after a fixed runtime, and the configuration file is the same TOML that the C++ runtime uses for IPC paths/hz values.
+
 ### One-Command Root Build (emits all wheels)
 
 The root `pyproject.toml` includes a custom build hook that runs `python -m build` in `IMU/`, `BARO/`, and `SERVO/` and places all wheels into the root `dist/` folder. It also creates a small `rpi_sensors` wheel (metadata only).

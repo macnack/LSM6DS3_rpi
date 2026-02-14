@@ -17,7 +17,7 @@ classifiers = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["rpi_sensors"]
+packages = ["rpi_sensors", "tools", "runtime.python"]
 
 [tool.hatch.build.hooks.custom]
 path = "tools/build_hook.py"
@@ -28,6 +28,8 @@ include = [
   "pyproject.toml",
   "rpi_sensors/**",
   "tools/build_hook.py",
+  "tools/**",
+  "runtime/python/**",
   "IMU/**",
   "BARO/**",
   "SERVO/**",
@@ -35,3 +37,5 @@ include = [
 
 [project.scripts]
 rt-status-report = "tools.rt_status_report:main"
+dummy-controller = "runtime.python.dummy_controller:main"
+dummy-estimator = "runtime.python.dummy_estimator:main"
