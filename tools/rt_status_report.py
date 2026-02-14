@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import time
 from pathlib import Path
 from typing import Iterable
 
@@ -26,7 +28,8 @@ JITTER_KEYS = {
     for component in JITTER_COMPONENTS
     for metric in JITTER_METRICS
 }
-DEADLINE_KEYS = {f"{component}_deadline_miss_count" for component in JITTER_COMPONENTS}
+DEADLINE_COMPONENTS = (*JITTER_COMPONENTS, "i2c")
+DEADLINE_KEYS = {f"{component}_deadline_miss_count" for component in DEADLINE_COMPONENTS}
 PYTHON_COMPONENTS = ("python_estimator", "python_controller")
 PYTHON_KEYS = {
     f"{component}_accept_count"
@@ -94,7 +97,7 @@ def print_deadline_tick_table(status: dict[str, str]) -> None:
     print(format_table_header(header, widths))
     print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
     row_colors = ("cyan", "green")
-    for idx, component in enumerate(JITTER_COMPONENTS):
+    for idx, component in enumerate(DEADLINE_COMPONENTS):
         miss_key = f"{component}_deadline_miss_count"
         ticks_key = f"{component}_ticks"
         misses = status.get(miss_key, "—")
@@ -193,20 +196,42 @@ def parse_status(path: Path) -> dict[str, str]:
     return data
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Pretty-print rt_status.txt with tables.")
-    parser.add_argument("path", nargs="?", type=Path, default=Path("/tmp/rt_status.txt"))
-    args = parser.parse_args()
-    if not args.path.exists():
-        raise SystemExit(f"{args.path} not found")
-
-    status = parse_status(args.path)
+def print_report(path: Path) -> None:
+    status = parse_status(path)
     tick_keys = {k for k in status if k.endswith("_ticks")}
     ignore = JITTER_KEYS | DEADLINE_KEYS | PYTHON_KEYS | tick_keys
     print_kv(status, ignore)
     print_python_table(status)
     print_deadline_tick_table(status)
     print_jitter_table(status)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Pretty-print rt_status.txt with tables.")
+    parser.add_argument("path", nargs="?", type=Path, default=Path("/tmp/rt_status.txt"))
+    parser.add_argument("--once", action="store_true", help="Run the report once and exit (default loops).")
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=0.5,
+        help="Seconds between refreshes in watch mode.",
+    )
+    args = parser.parse_args()
+    if not args.path.exists():
+        raise SystemExit(f"{args.path} not found")
+
+    if args.once:
+        print_report(args.path)
+        return
+
+    command = "cls" if os.name == "nt" else "clear"
+    try:
+        while True:
+            os.system(command)
+            print_report(args.path)
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        print("\nStopped refresh.")
 
 
 if __name__ == "__main__":
