@@ -5,9 +5,15 @@ import argparse
 import math
 import signal
 import struct
+import sys
 import time
+from pathlib import Path
 
-from ipc_common import (
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from runtime.python.ipc_common import (
     CONTROLLER_MSG_STRUCT,
     CONTROLLER_PAYLOAD_BYTES,
     ESTIMATOR_MSG_STRUCT,
