@@ -26,6 +26,15 @@ JITTER_KEYS = {
     for component in JITTER_COMPONENTS
     for metric in JITTER_METRICS
 }
+DEADLINE_KEYS = {f"{component}_deadline_miss_count" for component in JITTER_COMPONENTS}
+PYTHON_COMPONENTS = ("python_estimator", "python_controller")
+PYTHON_KEYS = {
+    f"{component}_accept_count"
+    for component in PYTHON_COMPONENTS
+} | {
+    f"{component}_reject_count"
+    for component in PYTHON_COMPONENTS
+}
 
 
 def paint(text: str, color: str) -> str:
@@ -84,6 +93,55 @@ def format_table_header(columns: Iterable[str], widths: dict[str, int]) -> str:
     return " | ".join(pieces)
 
 
+def print_deadline_table(status: dict[str, str]) -> None:
+    header = ("Component", "Misses")
+    widths = {"Component": 12, "Misses": 8}
+    print("\nDeadline misses:")
+    print(format_table_header(header, widths))
+    print("-" * (sum(widths.values()) + 3))
+    for component in JITTER_COMPONENTS:
+        key = f"{component}_deadline_miss_count"
+        value = status.get(key, "—")
+        color = classify(key, value if value != "—" else "0")
+        formatted = value.rjust(widths["Misses"])
+        print(
+            f"{component.title():>{widths['Component']}} | {paint(formatted, color)}"
+        )
+
+
+def print_python_table(status: dict[str, str]) -> None:
+    header = ("Component", "Accept", "Reject")
+    widths = {"Component": 16, "Accept": 12, "Reject": 12}
+    print("\nPython worker counters:")
+    print(format_table_header(header, widths))
+    print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
+    for component in PYTHON_COMPONENTS:
+        accept_key = f"{component}_accept_count"
+        reject_key = f"{component}_reject_count"
+        accept_value = status.get(accept_key, "—")
+        reject_value = status.get(reject_key, "—")
+        accept_color = classify(accept_key, accept_value if accept_value != "—" else "0")
+        reject_color = classify(reject_key, reject_value if reject_value != "—" else "0")
+        formatted_accept = (
+            f"{int(accept_value):{widths['Accept']},d}"
+            if accept_value.isdigit()
+            else accept_value.rjust(widths["Accept"])
+        )
+        formatted_reject = (
+            f"{int(reject_value):{widths['Reject']},d}"
+            if reject_value.isdigit()
+            else reject_value.rjust(widths["Reject"])
+        )
+        row = " | ".join(
+            [
+                f"{component:>{widths['Component']}}",
+                paint(formatted_accept, accept_color),
+                paint(formatted_reject, reject_color),
+            ]
+        )
+        print(row)
+
+
 def print_jitter_table(status: dict[str, str]) -> None:
     header = ("Component", "P50", "P95", "P99", "Max")
     widths = {"Component": 10, "P50": 12, "P95": 12, "P99": 12, "Max": 12}
@@ -139,8 +197,10 @@ def main() -> None:
 
     status = parse_status(args.path)
     tick_keys = {k for k in status if k.endswith("_ticks")}
-    ignore = JITTER_KEYS | tick_keys
+    ignore = JITTER_KEYS | DEADLINE_KEYS | PYTHON_KEYS | tick_keys
     print_kv(status, ignore)
+    print_python_table(status)
+    print_deadline_table(status)
     print_jitter_table(status)
     print_ticks_table(status)
 
