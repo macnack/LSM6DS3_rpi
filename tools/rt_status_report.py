@@ -15,6 +15,8 @@ COLOR = {
     "yellow": "\033[33m",
     "green": "\033[32m",
     "cyan": "\033[36m",
+    "blue": "\033[34m",
+    "white": "\033[37m",
 }
 
 WARNING_KEYS = {"failsafe_activation_count", "killswitch_active"}
@@ -67,11 +69,12 @@ def classify(key: str, value: str) -> str:
 
 
 def print_kv(status: dict[str, str], ignore: set[str]) -> None:
-    for raw_key, raw_value in status.items():
+    row_colors = ("cyan", "blue")
+    for idx, (raw_key, raw_value) in enumerate(status.items()):
         if raw_key in ignore:
             continue
         color = classify(raw_key, raw_value)
-        key = paint(f"{raw_key:>38}", "cyan")
+        key = paint(f"{raw_key:>38}", row_colors[idx % len(row_colors)])
         value = paint(raw_value, color)
         print(f"{key} = {value}")
 
@@ -96,7 +99,6 @@ def print_deadline_tick_table(status: dict[str, str]) -> None:
     print("\nDeadline misses & tick counts:")
     print(format_table_header(header, widths))
     print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
-    row_colors = ("cyan", "green")
     for idx, component in enumerate(DEADLINE_COMPONENTS):
         miss_key = f"{component}_deadline_miss_count"
         ticks_key = f"{component}_ticks"
@@ -114,10 +116,7 @@ def print_deadline_tick_table(status: dict[str, str]) -> None:
             if ticks.isdigit()
             else ticks.rjust(widths["Ticks"])
         )
-        component_label = paint(
-            f"{component.title():>{widths['Component']}}",
-            row_colors[idx % len(row_colors)],
-        )
+        component_label = paint(f"{component.title():>{widths['Component']}}", "white")
         row = " | ".join(
             [
                 component_label,
@@ -130,11 +129,10 @@ def print_deadline_tick_table(status: dict[str, str]) -> None:
 
 def print_python_table(status: dict[str, str]) -> None:
     header = ("Component", "Accept", "Reject")
-    widths = {"Component": 16, "Accept": 12, "Reject": 12}
+    widths = {"Component": 20, "Accept": 12, "Reject": 12}
     print("\nPython worker counters:")
     print(format_table_header(header, widths))
     print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
-    row_colors = ("cyan", "green")
     for idx, component in enumerate(PYTHON_COMPONENTS):
         accept_key = f"{component}_accept_count"
         reject_key = f"{component}_reject_count"
@@ -154,10 +152,7 @@ def print_python_table(status: dict[str, str]) -> None:
         )
         row = " | ".join(
             [
-                paint(
-                    f"{component:>{widths['Component']}}",
-                    row_colors[idx % len(row_colors)],
-                ),
+                paint(f"{component:>{widths['Component']}}", "white"),
                 paint(formatted_accept, accept_color),
                 paint(formatted_reject, reject_color),
             ]
