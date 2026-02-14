@@ -5,6 +5,7 @@ This repository contains:
 - `IMU/`: LSM6DS3-family IMU library (I2C + SPI).
 - `BARO/`: BMP390 barometer library (I2C).
 - `SERVO/`: Hardware PWM servo library (Raspberry Pi 5 Linux).
+- `runtime/`: RT core runtime (`rt_core`) with workers, IPC, fallback policies, and tests.
 
 Each subproject can be built independently, or you can build all enabled modules at once from the repo root.
 
@@ -23,6 +24,37 @@ Executables will be in `build/`, for example:
 - `build/lsm6ds3_read_once_spi`
 - `build/bmp390_read_once`
 - `build/servo_set_pulse`
+
+## Build Runtime
+
+Runtime on Linux/Raspberry Pi with hardware modules enabled:
+
+```bash
+cmake -S . -B build \
+  -DBUILD_RUNTIME=ON \
+  -DLSM6DS3_BUILD_PYTHON=OFF \
+  -DBMP390_BUILD_PYTHON=OFF \
+  -DSERVO_BUILD_PYTHON=OFF
+cmake --build build -j
+```
+
+Runtime portable/sim build (no IMU/BARO compile dependency):
+
+```bash
+cmake -S . -B build \
+  -DBUILD_RUNTIME=ON \
+  -DBUILD_IMU=OFF \
+  -DBUILD_BARO=OFF \
+  -DBUILD_SERVO=ON \
+  -DLSM6DS3_BUILD_PYTHON=OFF \
+  -DBMP390_BUILD_PYTHON=OFF \
+  -DSERVO_BUILD_PYTHON=OFF
+cmake --build build -j
+```
+
+Runtime executable:
+
+- `build/runtime/rt_core`
 
 ## Build Only One
 
@@ -97,3 +129,4 @@ For more Python packaging and runtime usage details, see:
 - `IMU/README.md`
 - `BARO/README.md`
 - `SERVO/README.md`
+- `runtime/README.md`
