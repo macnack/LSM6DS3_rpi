@@ -82,31 +82,47 @@ def jitter_rows(status: dict[str, str]) -> Iterable[tuple[str, dict[str, str]]]:
         yield component.title(), row
 
 
-def ticks_rows(status: dict[str, str]) -> Iterable[tuple[str, str]]:
-    for key in sorted(k for k in status if k.endswith("_ticks")):
-        name = key[: -len("_ticks")]
-        yield name.title(), status[key]
-
-
 def format_table_header(columns: Iterable[str], widths: dict[str, int]) -> str:
     pieces = [f"{col:>{widths[col]}}" for col in columns]
     return " | ".join(pieces)
 
 
-def print_deadline_table(status: dict[str, str]) -> None:
-    header = ("Component", "Misses")
-    widths = {"Component": 12, "Misses": 8}
-    print("\nDeadline misses:")
+def print_deadline_tick_table(status: dict[str, str]) -> None:
+    header = ("Component", "Misses", "Ticks")
+    widths = {"Component": 12, "Misses": 8, "Ticks": 16}
+    print("\nDeadline misses & tick counts:")
     print(format_table_header(header, widths))
-    print("-" * (sum(widths.values()) + 3))
-    for component in JITTER_COMPONENTS:
-        key = f"{component}_deadline_miss_count"
-        value = status.get(key, "—")
-        color = classify(key, value if value != "—" else "0")
-        formatted = value.rjust(widths["Misses"])
-        print(
-            f"{component.title():>{widths['Component']}} | {paint(formatted, color)}"
+    print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
+    row_colors = ("cyan", "green")
+    for idx, component in enumerate(JITTER_COMPONENTS):
+        miss_key = f"{component}_deadline_miss_count"
+        ticks_key = f"{component}_ticks"
+        misses = status.get(miss_key, "—")
+        ticks = status.get(ticks_key, "—")
+        miss_color = classify(miss_key, misses if misses != "—" else "0")
+        tick_color = classify(ticks_key, ticks if ticks != "—" else "0")
+        miss_formatted = (
+            f"{int(misses):{widths['Misses']},d}"
+            if misses.isdigit()
+            else misses.rjust(widths["Misses"])
         )
+        tick_formatted = (
+            f"{int(ticks):{widths['Ticks']},d}"
+            if ticks.isdigit()
+            else ticks.rjust(widths["Ticks"])
+        )
+        component_label = paint(
+            f"{component.title():>{widths['Component']}}",
+            row_colors[idx % len(row_colors)],
+        )
+        row = " | ".join(
+            [
+                component_label,
+                paint(miss_formatted, miss_color),
+                paint(tick_formatted, tick_color),
+            ]
+        )
+        print(row)
 
 
 def print_python_table(status: dict[str, str]) -> None:
@@ -115,7 +131,8 @@ def print_python_table(status: dict[str, str]) -> None:
     print("\nPython worker counters:")
     print(format_table_header(header, widths))
     print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
-    for component in PYTHON_COMPONENTS:
+    row_colors = ("cyan", "green")
+    for idx, component in enumerate(PYTHON_COMPONENTS):
         accept_key = f"{component}_accept_count"
         reject_key = f"{component}_reject_count"
         accept_value = status.get(accept_key, "—")
@@ -134,7 +151,10 @@ def print_python_table(status: dict[str, str]) -> None:
         )
         row = " | ".join(
             [
-                f"{component:>{widths['Component']}}",
+                paint(
+                    f"{component:>{widths['Component']}}",
+                    row_colors[idx % len(row_colors)],
+                ),
                 paint(formatted_accept, accept_color),
                 paint(formatted_reject, reject_color),
             ]
@@ -163,21 +183,6 @@ def print_jitter_table(status: dict[str, str]) -> None:
         print(" | ".join(parts))
 
 
-def print_ticks_table(status: dict[str, str]) -> None:
-    header = ("Component", "Ticks")
-    widths = {"Component": 12, "Ticks": 16}
-    print("\nTick counts:")
-    print(format_table_header(header, widths))
-    print("-" * (sum(widths.values()) + 3))
-    for component, value in ticks_rows(status):
-        try:
-            count = int(value)
-            formatted = f"{count:{widths['Ticks']},d}"
-        except ValueError:
-            formatted = value.rjust(widths["Ticks"])
-        print(f"{component:>{widths['Component']}} | {paint(formatted, 'cyan')}")
-
-
 def parse_status(path: Path) -> dict[str, str]:
     data: dict[str, str] = {}
     for line in path.read_text().splitlines():
@@ -200,9 +205,8 @@ def main() -> None:
     ignore = JITTER_KEYS | DEADLINE_KEYS | PYTHON_KEYS | tick_keys
     print_kv(status, ignore)
     print_python_table(status)
-    print_deadline_table(status)
+    print_deadline_tick_table(status)
     print_jitter_table(status)
-    print_ticks_table(status)
 
 
 if __name__ == "__main__":
