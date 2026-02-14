@@ -32,13 +32,15 @@ JITTER_KEYS = {
 }
 DEADLINE_COMPONENTS = (*JITTER_COMPONENTS, "i2c")
 DEADLINE_KEYS = {f"{component}_deadline_miss_count" for component in DEADLINE_COMPONENTS}
-PYTHON_COMPONENTS = ("external_estimator_accept_count", "external_estimator_accept_count")
-PYTHON_KEYS = {
-    f"{component}_accept_count"
-    for component in PYTHON_COMPONENTS
-} | {
-    f"{component}_reject_count"
-    for component in PYTHON_COMPONENTS
+WORKER_COMPONENTS = (
+    ("Estimator", "external_estimator", "python_estimator"),
+    ("Controller", "external_controller", "python_controller"),
+)
+WORKER_KEYS = {
+    f"{prefix}_{suffix}"
+    for _, primary, legacy in WORKER_COMPONENTS
+    for prefix in (primary, legacy)
+    for suffix in ("accept_count", "reject_count")
 }
 
 
@@ -127,17 +129,25 @@ def print_deadline_tick_table(status: dict[str, str]) -> None:
         print(row)
 
 
-def print_python_table(status: dict[str, str]) -> None:
+def print_worker_table(status: dict[str, str]) -> None:
     header = ("Component", "Accept", "Reject")
     widths = {"Component": 20, "Accept": 12, "Reject": 12}
-    print("\nPython worker counters:")
+    print("\nExternal worker counters:")
     print(format_table_header(header, widths))
     print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
-    for idx, component in enumerate(PYTHON_COMPONENTS):
-        accept_key = f"{component}_accept_count"
-        reject_key = f"{component}_reject_count"
-        accept_value = status.get(accept_key, "—")
-        reject_value = status.get(reject_key, "—")
+    for label, primary_prefix, legacy_prefix in WORKER_COMPONENTS:
+        accept_key = f"{primary_prefix}_accept_count"
+        reject_key = f"{primary_prefix}_reject_count"
+        accept_value = status.get(accept_key)
+        reject_value = status.get(reject_key)
+
+        if accept_value is None:
+            accept_key = f"{legacy_prefix}_accept_count"
+            accept_value = status.get(accept_key, "—")
+        if reject_value is None:
+            reject_key = f"{legacy_prefix}_reject_count"
+            reject_value = status.get(reject_key, "—")
+
         accept_color = classify(accept_key, accept_value if accept_value != "—" else "0")
         reject_color = classify(reject_key, reject_value if reject_value != "—" else "0")
         formatted_accept = (
@@ -152,7 +162,7 @@ def print_python_table(status: dict[str, str]) -> None:
         )
         row = " | ".join(
             [
-                paint(f"{component:>{widths['Component']}}", "white"),
+                paint(f"{label:>{widths['Component']}}", "white"),
                 paint(formatted_accept, accept_color),
                 paint(formatted_reject, reject_color),
             ]
@@ -194,9 +204,9 @@ def parse_status(path: Path) -> dict[str, str]:
 def print_report(path: Path) -> None:
     status = parse_status(path)
     tick_keys = {k for k in status if k.endswith("_ticks")}
-    ignore = JITTER_KEYS | DEADLINE_KEYS | PYTHON_KEYS | tick_keys
+    ignore = JITTER_KEYS | DEADLINE_KEYS | WORKER_KEYS | tick_keys
     print_kv(status, ignore)
-    print_python_table(status)
+    print_worker_table(status)
     print_deadline_tick_table(status)
     print_jitter_table(status)
 
