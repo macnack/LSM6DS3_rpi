@@ -217,15 +217,37 @@ class Runtime::Impl {
 
     start_workers();
 
+    uint64_t status_period_ns = 0;
+    uint64_t next_status_write_ns = 0;
+    if (!overrides_.status_file.empty()) {
+      const uint64_t period_ms =
+          (cfg_.runtime.log_period_ms > 0) ? cfg_.runtime.log_period_ms : 1000ULL;
+      status_period_ns = ns_from_ms(period_ms);
+      next_status_write_ns = monotonic_time_ns() + status_period_ns;
+    }
+
+    auto maybe_write_periodic_status = [this, status_period_ns, &next_status_write_ns]() mutable {
+      if (status_period_ns == 0) {
+        return;
+      }
+      const uint64_t now_ns = monotonic_time_ns();
+      if (now_ns >= next_status_write_ns) {
+        maybe_write_status_file();
+        next_status_write_ns = now_ns + status_period_ns;
+      }
+    };
+
     const double runtime_sec = effective_run_duration_s();
     if (runtime_sec > 0.0) {
       const uint64_t deadline_ns = monotonic_time_ns() + static_cast<uint64_t>(runtime_sec * 1e9);
       while (!stop_requested_.load(std::memory_order_relaxed) && monotonic_time_ns() < deadline_ns) {
+        maybe_write_periodic_status();
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
       }
       stop_requested_.store(true, std::memory_order_relaxed);
     } else {
       while (!stop_requested_.load(std::memory_order_relaxed)) {
+        maybe_write_periodic_status();
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
       }
     }
