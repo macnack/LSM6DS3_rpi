@@ -7,6 +7,10 @@ from dataclasses import dataclass
 import mmap
 from pathlib import Path
 from multiprocessing import shared_memory
+try:
+    from multiprocessing import resource_tracker
+except ImportError:  # pragma: no cover
+    resource_tracker = None
 
 MESSAGE_MAGIC = 0x52544331
 MESSAGE_VERSION = 1
@@ -56,12 +60,27 @@ class ShmMailbox:
         self._mmap = mmap.mmap(fh.fileno(), self._size, access=mmap.ACCESS_WRITE)
         return True
 
+    @staticmethod
+    def _open_existing_shm_no_track(name: str) -> shared_memory.SharedMemory:
+        # Python 3.13+ supports track=False; for older versions, unregister manually.
+        try:
+            return shared_memory.SharedMemory(name=name, create=False, track=False)
+        except TypeError:
+            shm = shared_memory.SharedMemory(name=name, create=False)
+            if resource_tracker is not None:
+                try:
+                    shm_name = getattr(shm, "_name", f"/{name}")
+                    resource_tracker.unregister(shm_name, "shared_memory")
+                except Exception:
+                    pass
+            return shm
+
     def open_existing(self) -> None:
         last_err: Exception | None = None
         name = self._normalize_name(self._cfg.name)
         for _ in range(max(1, self._cfg.retries)):
             try:
-                self._shm = shared_memory.SharedMemory(name=name, create=False)
+                self._shm = self._open_existing_shm_no_track(name)
                 return
             except (FileNotFoundError, PermissionError, OSError) as exc:
                 last_err = exc
@@ -71,7 +90,9 @@ class ShmMailbox:
                 except OSError as fb_exc:
                     last_err = fb_exc
                 time.sleep(self._cfg.retry_sleep_s)
-        raise RuntimeError(f"Failed to open shared memory '{self._cfg.name}'") from last_err
+        raise RuntimeError(
+            f"Failed to open shared memory '{self._cfg.name}'. Start rt_core first and keep it running."
+        ) from last_err
 
     def close(self) -> None:
         if self._mmap is not None:
