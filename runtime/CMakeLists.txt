@@ -58,6 +58,14 @@ add_executable(rt_core src/main.cpp)
 target_link_libraries(rt_core PRIVATE runtime_core)
 target_compile_options(rt_core PRIVATE -Wall -Wextra -Wpedantic)
 
+add_executable(dummy_estimator_cpp src/dummy_estimator.cpp)
+target_link_libraries(dummy_estimator_cpp PRIVATE runtime_core)
+target_compile_options(dummy_estimator_cpp PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(dummy_controller_cpp src/dummy_controller.cpp)
+target_link_libraries(dummy_controller_cpp PRIVATE runtime_core)
+target_compile_options(dummy_controller_cpp PRIVATE -Wall -Wextra -Wpedantic)
+
 if(BUILD_TESTING)
   add_executable(runtime_unit_fallback tests/test_fallback.cpp)
   target_link_libraries(runtime_unit_fallback PRIVATE runtime_core)

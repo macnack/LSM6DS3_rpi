@@ -1,7 +1,7 @@
 # RT Runtime (`rt_core`)
 
 `rt_core` is the runtime process that owns deterministic control tick timing and actuator outputs.
-It supports C++ native estimator/controller and Python development workers over shared-memory IPC.
+It supports C++ native estimator/controller and external development workers (Python or C++) over shared-memory IPC.
 
 ## Architecture
 
@@ -13,10 +13,12 @@ Workers in `rt_core`:
 - `i2c_hub_worker`: I2C job registry scheduler (BARO now; extensible for future sensors).
 - `estimator_thread`: C++ native estimator producer (always available as fallback path).
 
-Python workers (optional):
+External workers (optional):
 
 - `runtime/python/dummy_estimator.py`
 - `runtime/python/dummy_controller.py`
+- `build/runtime/dummy_estimator_cpp`
+- `build/runtime/dummy_controller_cpp`
 
 ## Data Flow
 
@@ -29,13 +31,13 @@ Python workers (optional):
 
 ## Modes
 
-- `estimator_mode = cpp_native | python_dev`
-- `controller_mode = cpp_native | python_dev`
+- `estimator_mode = cpp_native | python_dev | cpp_dev`
+- `controller_mode = cpp_native | python_dev | cpp_dev`
 
 Selection policies:
 
-- Estimator (`python_dev`): `fresh python -> last valid python -> cpp fallback -> failsafe/degraded`
-- Controller (`python_dev`): `fresh python -> last valid python -> failsafe`
+- Estimator (`python_dev` or `cpp_dev`): `fresh external -> last valid external -> cpp fallback -> failsafe/degraded`
+- Controller (`python_dev` or `cpp_dev`): `fresh external -> last valid external -> failsafe`
 
 C++ control tick always runs and never blocks on IPC.
 
@@ -137,6 +139,7 @@ Example configs:
 - `runtime/config/rt_core_cpp_native.toml`
 - `runtime/config/rt_core_python_dev.toml`
 - `runtime/config/rt_core_sim_python_dev.toml`
+- `runtime/config/rt_core_sim_cpp_dev.toml`
 
 ## Build
 
@@ -187,6 +190,14 @@ No-hardware end-to-end simulation:
 ./build/runtime/rt_core --config ./runtime/config/rt_core_sim_python_dev.toml
 python3 ./runtime/python/dummy_estimator.py --config ./runtime/config/rt_core_sim_python_dev.toml
 python3 ./runtime/python/dummy_controller.py --config ./runtime/config/rt_core_sim_python_dev.toml
+```
+
+C++ development path in separate terminals:
+
+```bash
+./build/runtime/rt_core --config ./runtime/config/rt_core_sim_cpp_dev.toml --print-config
+./build/runtime/dummy_estimator_cpp --config ./runtime/config/rt_core_sim_cpp_dev.toml
+./build/runtime/dummy_controller_cpp --config ./runtime/config/rt_core_sim_cpp_dev.toml
 ```
 
 Useful CLI options:

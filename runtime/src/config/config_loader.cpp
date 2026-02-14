@@ -108,11 +108,27 @@ void maybe_apply(const TomlSection& section, const std::string& key, Fn&& fn) {
 }  // namespace
 
 std::string estimator_mode_to_string(EstimatorMode mode) {
-  return mode == EstimatorMode::CppNative ? "cpp_native" : "python_dev";
+  switch (mode) {
+    case EstimatorMode::CppNative:
+      return "cpp_native";
+    case EstimatorMode::PythonDev:
+      return "python_dev";
+    case EstimatorMode::CppDev:
+      return "cpp_dev";
+  }
+  return "cpp_native";
 }
 
 std::string controller_mode_to_string(ControllerMode mode) {
-  return mode == ControllerMode::CppNative ? "cpp_native" : "python_dev";
+  switch (mode) {
+    case ControllerMode::CppNative:
+      return "cpp_native";
+    case ControllerMode::PythonDev:
+      return "python_dev";
+    case ControllerMode::CppDev:
+      return "cpp_dev";
+  }
+  return "cpp_native";
 }
 
 EstimatorMode parse_estimator_mode(const std::string& value) {
@@ -122,7 +138,10 @@ EstimatorMode parse_estimator_mode(const std::string& value) {
   if (value == "python_dev") {
     return EstimatorMode::PythonDev;
   }
-  throw std::runtime_error("Invalid estimator_mode: " + value + " (expected cpp_native|python_dev)");
+  if (value == "cpp_dev") {
+    return EstimatorMode::CppDev;
+  }
+  throw std::runtime_error("Invalid estimator_mode: " + value + " (expected cpp_native|python_dev|cpp_dev)");
 }
 
 ControllerMode parse_controller_mode(const std::string& value) {
@@ -132,7 +151,10 @@ ControllerMode parse_controller_mode(const std::string& value) {
   if (value == "python_dev") {
     return ControllerMode::PythonDev;
   }
-  throw std::runtime_error("Invalid controller_mode: " + value + " (expected cpp_native|python_dev)");
+  if (value == "cpp_dev") {
+    return ControllerMode::CppDev;
+  }
+  throw std::runtime_error("Invalid controller_mode: " + value + " (expected cpp_native|python_dev|cpp_dev)");
 }
 
 RuntimeConfig load_runtime_config(const std::string& path) {

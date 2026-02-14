@@ -10,11 +10,13 @@ namespace runtime {
 enum class EstimatorMode {
   CppNative,
   PythonDev,
+  CppDev,
 };
 
 enum class ControllerMode {
   CppNative,
   PythonDev,
+  CppDev,
 };
 
 struct ImuSample {

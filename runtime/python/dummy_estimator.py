@@ -5,15 +5,25 @@ import argparse
 import math
 import signal
 import struct
-import sys
 import time
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from runtime.python.ipc_common import (
+try:
+    from runtime.python.ipc_common import (
+        ESTIMATOR_MSG_STRUCT,
+        ESTIMATOR_PAYLOAD_BYTES,
+        MESSAGE_MAGIC,
+        MESSAGE_VERSION,
+        SENSOR_MSG_STRUCT,
+        ShmMailbox,
+        MailboxConfig,
+        finalize_crc,
+        monotonic_ns,
+        parse_float,
+        parse_int,
+        parse_simple_toml,
+        parse_string,
+    )
+except ModuleNotFoundError:
+    from ipc_common import (
     ESTIMATOR_MSG_STRUCT,
     ESTIMATOR_PAYLOAD_BYTES,
     MESSAGE_MAGIC,
@@ -27,7 +37,7 @@ from runtime.python.ipc_common import (
     parse_int,
     parse_simple_toml,
     parse_string,
-)
+    )
 
 
 def quat_from_euler(roll: float, pitch: float, yaw: float) -> tuple[float, float, float, float]:

@@ -55,6 +55,13 @@ cmake --build build -j
 Runtime executable:
 
 - `build/runtime/rt_core`
+- `build/runtime/dummy_estimator_cpp`
+- `build/runtime/dummy_controller_cpp`
+
+Runtime development configs:
+
+- `runtime/config/rt_core_sim_python_dev.toml` (Python dummy workers)
+- `runtime/config/rt_core_sim_cpp_dev.toml` (C++ dummy workers)
 
 ## Build Only One
 
