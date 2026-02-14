@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -233,6 +234,176 @@ def parse_status(path: Path) -> dict[str, str]:
     return data
 
 
+def parse_int(status: dict[str, str], key: str) -> int | None:
+    raw = status.get(key)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+@dataclass
+class MonitorState:
+    prev_status: dict[str, str] | None = None
+    prev_sample_ts: float = 0.0
+    sensor_last_seen_ts: float | None = None
+    actuator_last_seen_ts: float | None = None
+    sensor_last_seen_wall: float | None = None
+    actuator_last_seen_wall: float | None = None
+
+
+def health_from_age(age_s: float | None, warn_sec: float, stall_sec: float) -> tuple[str, str]:
+    if age_s is None:
+        return "red", "NO_DATA"
+    if age_s >= stall_sec:
+        return "red", "STALLED"
+    if age_s >= warn_sec:
+        return "yellow", "SLOW"
+    return "green", "OK"
+
+
+def format_last_seen(age_s: float | None, wall_ts: float | None) -> str:
+    if age_s is None or wall_ts is None:
+        return "never"
+    wall = time.strftime("%H:%M:%S", time.localtime(wall_ts))
+    return f"{wall} ({age_s:4.1f}s ago)"
+
+
+def monitor_text(value: int | None, width: int) -> str:
+    if value is None:
+        return "n/a".rjust(width)
+    return f"{value:{width},d}"
+
+
+def monitor_rate_text(rate: float | None, width: int) -> str:
+    if rate is None:
+        return "n/a".rjust(width)
+    return f"{rate:>{width}.1f}"
+
+
+def print_link_health(
+    path: Path,
+    state: MonitorState,
+    warn_sec: float,
+    stall_sec: float,
+) -> None:
+    now_wall = time.time()
+    now_mono = time.monotonic()
+    status = parse_status(path)
+
+    sensor_frames = parse_int(status, "sim_net_sensor_frames")
+    actuator_frames = parse_int(status, "sim_net_actuator_frames")
+    sensor_crc = parse_int(status, "sim_net_sensor_crc_fail")
+    sensor_disconnects = parse_int(status, "sim_net_sensor_disconnects")
+    actuator_errors = parse_int(status, "sim_net_actuator_send_errors")
+    actuator_clients = parse_int(status, "sim_net_actuator_clients")
+
+    sensor_rate: float | None = None
+    actuator_rate: float | None = None
+    if state.prev_status is not None and state.prev_sample_ts > 0.0:
+        dt_s = max(now_mono - state.prev_sample_ts, 1e-6)
+        prev_sensor_frames = parse_int(state.prev_status, "sim_net_sensor_frames")
+        prev_actuator_frames = parse_int(state.prev_status, "sim_net_actuator_frames")
+        if sensor_frames is not None and prev_sensor_frames is not None:
+            sensor_rate = max(sensor_frames - prev_sensor_frames, 0) / dt_s
+        if actuator_frames is not None and prev_actuator_frames is not None:
+            actuator_rate = max(actuator_frames - prev_actuator_frames, 0) / dt_s
+
+    if state.prev_status is None:
+        if sensor_frames is not None and sensor_frames > 0:
+            state.sensor_last_seen_ts = now_mono
+            state.sensor_last_seen_wall = now_wall
+        if actuator_frames is not None and actuator_frames > 0:
+            state.actuator_last_seen_ts = now_mono
+            state.actuator_last_seen_wall = now_wall
+    else:
+        prev_sensor_frames = parse_int(state.prev_status, "sim_net_sensor_frames")
+        prev_actuator_frames = parse_int(state.prev_status, "sim_net_actuator_frames")
+        if (
+            sensor_frames is not None
+            and prev_sensor_frames is not None
+            and sensor_frames > prev_sensor_frames
+        ):
+            state.sensor_last_seen_ts = now_mono
+            state.sensor_last_seen_wall = now_wall
+        if (
+            actuator_frames is not None
+            and prev_actuator_frames is not None
+            and actuator_frames > prev_actuator_frames
+        ):
+            state.actuator_last_seen_ts = now_mono
+            state.actuator_last_seen_wall = now_wall
+
+    sensor_age = None if state.sensor_last_seen_ts is None else max(0.0, now_mono - state.sensor_last_seen_ts)
+    actuator_age = None if state.actuator_last_seen_ts is None else max(0.0, now_mono - state.actuator_last_seen_ts)
+
+    sensor_health_color, sensor_health_text = health_from_age(sensor_age, warn_sec, stall_sec)
+    actuator_health_color, actuator_health_text = health_from_age(actuator_age, warn_sec, stall_sec)
+    if actuator_clients is not None and actuator_clients <= 0:
+        actuator_health_color = "yellow"
+        actuator_health_text = "NO_CLIENT"
+
+    status_age = max(0.0, now_wall - path.stat().st_mtime)
+    if status_age >= stall_sec:
+        status_color = "red"
+    elif status_age >= warn_sec:
+        status_color = "yellow"
+    else:
+        status_color = "green"
+
+    print(paint("Link health monitor (live)", "white"))
+    print(f"status file: {path}")
+    print(
+        "status age: "
+        + paint(f"{status_age:4.1f}s", status_color)
+        + " | sim_mode="
+        + status.get("sim_mode", "n/a")
+    )
+
+    header = ("Flow", "Frames", "Rate(fps)", "Last Seen", "Health", "Notes")
+    widths = {"Flow": 10, "Frames": 14, "Rate(fps)": 10, "Last Seen": 23, "Health": 10, "Notes": 36}
+    print("")
+    print(format_table_header(header, widths))
+    print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
+
+    sensor_notes = (
+        f"crc={sensor_crc if sensor_crc is not None else 'n/a'} "
+        f"disconnects={sensor_disconnects if sensor_disconnects is not None else 'n/a'}"
+    )
+    sensor_row = " | ".join(
+        [
+            paint(f"{'Sensor':>{widths['Flow']}}", "white"),
+            paint(monitor_text(sensor_frames, widths["Frames"]), "cyan"),
+            paint(monitor_rate_text(sensor_rate, widths["Rate(fps)"]), "cyan"),
+            paint(f"{format_last_seen(sensor_age, state.sensor_last_seen_wall):>{widths['Last Seen']}}", "cyan"),
+            paint(f"{sensor_health_text:>{widths['Health']}}", sensor_health_color),
+            paint(f"{sensor_notes:>{widths['Notes']}}", "cyan"),
+        ]
+    )
+    print(sensor_row)
+
+    actuator_notes = (
+        f"send_err={actuator_errors if actuator_errors is not None else 'n/a'} "
+        f"clients={actuator_clients if actuator_clients is not None else 'n/a'}"
+    )
+    actuator_row = " | ".join(
+        [
+            paint(f"{'Actuator':>{widths['Flow']}}", "white"),
+            paint(monitor_text(actuator_frames, widths["Frames"]), "cyan"),
+            paint(monitor_rate_text(actuator_rate, widths["Rate(fps)"]), "cyan"),
+            paint(f"{format_last_seen(actuator_age, state.actuator_last_seen_wall):>{widths['Last Seen']}}", "cyan"),
+            paint(f"{actuator_health_text:>{widths['Health']}}", actuator_health_color),
+            paint(f"{actuator_notes:>{widths['Notes']}}", "cyan"),
+        ]
+    )
+    print(actuator_row)
+
+    state.prev_status = status
+    state.prev_sample_ts = now_mono
+
+
 def print_report(path: Path) -> None:
     status = parse_status(path)
     tick_keys = {k for k in status if k.endswith("_ticks")}
@@ -246,7 +417,7 @@ def print_report(path: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Pretty-print rt_status.txt with tables.")
+    parser = argparse.ArgumentParser(description="Pretty-print rt_status.txt or run live link monitor.")
     parser.add_argument("path", nargs="?", type=Path, default=Path("/tmp/rt_status.txt"))
     parser.add_argument("--once", action="store_true", help="Run the report once and exit (default loops).")
     parser.add_argument(
@@ -255,19 +426,47 @@ def main() -> None:
         default=0.5,
         help="Seconds between refreshes in watch mode.",
     )
+    parser.add_argument(
+        "--monitor",
+        action="store_true",
+        help="Run live sim_net link monitor with frame rates and stall detection.",
+    )
+    parser.add_argument(
+        "--warn-sec",
+        type=float,
+        default=1.5,
+        help="Age threshold (seconds) for warning-level stale links in monitor mode.",
+    )
+    parser.add_argument(
+        "--stall-sec",
+        type=float,
+        default=3.0,
+        help="Age threshold (seconds) for stall-level link alerts in monitor mode.",
+    )
     args = parser.parse_args()
     if not args.path.exists():
         raise SystemExit(f"{args.path} not found")
+    if args.warn_sec <= 0 or args.stall_sec <= 0:
+        raise SystemExit("--warn-sec and --stall-sec must be > 0")
+    if args.warn_sec >= args.stall_sec:
+        raise SystemExit("--warn-sec must be < --stall-sec")
 
     if args.once:
-        print_report(args.path)
+        if args.monitor:
+            print_link_health(args.path, MonitorState(), args.warn_sec, args.stall_sec)
+        else:
+            print_report(args.path)
         return
 
     command = "cls" if os.name == "nt" else "clear"
+    monitor_state = MonitorState()
     try:
         while True:
             os.system(command)
-            print_report(args.path)
+            if args.monitor:
+                print_link_health(args.path, monitor_state, args.warn_sec, args.stall_sec)
+            else:
+                print_report(args.path)
             time.sleep(args.interval)
     except KeyboardInterrupt:
         print("\nStopped refresh.")
