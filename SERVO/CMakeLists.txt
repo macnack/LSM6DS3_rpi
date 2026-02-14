@@ -25,6 +25,11 @@ add_executable(servo_set_pulse examples/set_pulse.cpp)
 target_link_libraries(servo_set_pulse PRIVATE servo)
 
 if(SERVO_BUILD_PYTHON)
+  if(POLICY CMP0148)
+    cmake_policy(SET CMP0148 NEW)
+  endif()
+  set(PYBIND11_FINDPYTHON ON)
+  find_package(Python COMPONENTS Interpreter Development REQUIRED)
   find_package(pybind11 CONFIG REQUIRED)
 
   pybind11_add_module(_servo src/pybind_module.cpp)
