@@ -32,6 +32,11 @@ add_executable(lsm6ds3_read_once_spi examples/read_once_spi.cpp)
 target_link_libraries(lsm6ds3_read_once_spi PRIVATE lsm6ds3)
 
 if(LSM6DS3_BUILD_PYTHON)
+  if(POLICY CMP0148)
+    cmake_policy(SET CMP0148 NEW)
+  endif()
+  set(PYBIND11_FINDPYTHON ON)
+  find_package(Python COMPONENTS Interpreter Development REQUIRED)
   find_package(pybind11 CONFIG REQUIRED)
 
   pybind11_add_module(_lsm6ds3 src/pybind_module.cpp)

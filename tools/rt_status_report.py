@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+"\"\"\"Dump rt_status.txt with colors plus ready-to-read jitter/tick tables.\"\""
+
+from __future__ import annotations
+
+import argparse
+import os
+import time
+from pathlib import Path
+from typing import Iterable
+
+COLOR = {
+    "reset": "\033[0m",
+    "red": "\033[31m",
+    "yellow": "\033[33m",
+    "green": "\033[32m",
+    "cyan": "\033[36m",
+    "blue": "\033[34m",
+    "white": "\033[37m",
+}
+
+WARNING_KEYS = {"failsafe_activation_count", "killswitch_active"}
+CRITICAL_SUFFIXES = ("_deadline_miss_count", "_reject_count", "_trip_count")
+JITTER_THRESHOLDS = {"p50": 80000, "p95": 120000, "p99": 200000, "max": 300000}
+METRIC_LABELS = {"p50": "P50", "p95": "P95", "p99": "P99", "max": "Max"}
+JITTER_COMPONENTS = ("control", "actuator", "imu", "baro")
+JITTER_METRICS = ("p50", "p95", "p99", "max")
+JITTER_KEYS = {
+    f"{component}_jitter_{metric}_ns"
+    for component in JITTER_COMPONENTS
+    for metric in JITTER_METRICS
+}
+DEADLINE_COMPONENTS = (*JITTER_COMPONENTS, "i2c")
+DEADLINE_KEYS = {f"{component}_deadline_miss_count" for component in DEADLINE_COMPONENTS}
+WORKER_COMPONENTS = (
+    ("Estimator", "external_estimator", "python_estimator"),
+    ("Controller", "external_controller", "python_controller"),
+)
+WORKER_KEYS = {
+    f"{prefix}_{suffix}"
+    for _, primary, legacy in WORKER_COMPONENTS
+    for prefix in (primary, legacy)
+    for suffix in ("accept_count", "reject_count")
+}
+
+
+def paint(text: str, color: str) -> str:
+    return f"{COLOR[color]}{text}{COLOR['reset']}"
+
+
+def classify(key: str, value: str) -> str:
+    lower = key.lower()
+    if any(lower.endswith(suffix) for suffix in CRITICAL_SUFFIXES):
+        try:
+            return "red" if int(value) > 0 else "green"
+        except ValueError:
+            return "yellow"
+    if lower in WARNING_KEYS:
+        return "red" if value.strip().lower() not in ("false", "0") else "green"
+    if "jitter" in lower:
+        for label, threshold in JITTER_THRESHOLDS.items():
+            if lower.endswith(label):
+                try:
+                    j = int(value)
+                except ValueError:
+                    return "yellow"
+                if j > threshold:
+                    return "red" if label == "max" else "yellow"
+                return "green"
+    return "cyan"
+
+
+def print_kv(status: dict[str, str], ignore: set[str]) -> None:
+    row_colors = ("cyan", "blue")
+    for idx, (raw_key, raw_value) in enumerate(status.items()):
+        if raw_key in ignore:
+            continue
+        color = classify(raw_key, raw_value)
+        key = paint(f"{raw_key:>38}", row_colors[idx % len(row_colors)])
+        value = paint(raw_value, color)
+        print(f"{key} = {value}")
+
+
+def jitter_rows(status: dict[str, str]) -> Iterable[tuple[str, dict[str, str]]]:
+    for component in JITTER_COMPONENTS:
+        row = {}
+        for metric in JITTER_METRICS:
+            key = f"{component}_jitter_{metric}_ns"
+            row[metric] = status.get(key, "—")
+        yield component.title(), row
+
+
+def format_table_header(columns: Iterable[str], widths: dict[str, int]) -> str:
+    pieces = [f"{col:>{widths[col]}}" for col in columns]
+    return " | ".join(pieces)
+
+
+def print_deadline_tick_table(status: dict[str, str]) -> None:
+    header = ("Component", "Misses", "Ticks")
+    widths = {"Component": 12, "Misses": 8, "Ticks": 16}
+    print("\nDeadline misses & tick counts:")
+    print(format_table_header(header, widths))
+    print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
+    for idx, component in enumerate(DEADLINE_COMPONENTS):
+        miss_key = f"{component}_deadline_miss_count"
+        ticks_key = f"{component}_ticks"
+        misses = status.get(miss_key, "—")
+        ticks = status.get(ticks_key, "—")
+        miss_color = classify(miss_key, misses if misses != "—" else "0")
+        tick_color = classify(ticks_key, ticks if ticks != "—" else "0")
+        miss_formatted = (
+            f"{int(misses):{widths['Misses']},d}"
+            if misses.isdigit()
+            else misses.rjust(widths["Misses"])
+        )
+        tick_formatted = (
+            f"{int(ticks):{widths['Ticks']},d}"
+            if ticks.isdigit()
+            else ticks.rjust(widths["Ticks"])
+        )
+        component_label = paint(f"{component.title():>{widths['Component']}}", "white")
+        row = " | ".join(
+            [
+                component_label,
+                paint(miss_formatted, miss_color),
+                paint(tick_formatted, tick_color),
+            ]
+        )
+        print(row)
+
+
+def print_worker_table(status: dict[str, str]) -> None:
+    header = ("Component", "Accept", "Reject")
+    widths = {"Component": 20, "Accept": 12, "Reject": 12}
+    print("\nExternal worker counters:")
+    print(format_table_header(header, widths))
+    print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
+    for label, primary_prefix, legacy_prefix in WORKER_COMPONENTS:
+        accept_key = f"{primary_prefix}_accept_count"
+        reject_key = f"{primary_prefix}_reject_count"
+        accept_value = status.get(accept_key)
+        reject_value = status.get(reject_key)
+
+        if accept_value is None:
+            accept_key = f"{legacy_prefix}_accept_count"
+            accept_value = status.get(accept_key, "—")
+        if reject_value is None:
+            reject_key = f"{legacy_prefix}_reject_count"
+            reject_value = status.get(reject_key, "—")
+
+        accept_color = classify(accept_key, accept_value if accept_value != "—" else "0")
+        reject_color = classify(reject_key, reject_value if reject_value != "—" else "0")
+        formatted_accept = (
+            f"{int(accept_value):{widths['Accept']},d}"
+            if accept_value.isdigit()
+            else accept_value.rjust(widths["Accept"])
+        )
+        formatted_reject = (
+            f"{int(reject_value):{widths['Reject']},d}"
+            if reject_value.isdigit()
+            else reject_value.rjust(widths["Reject"])
+        )
+        row = " | ".join(
+            [
+                paint(f"{label:>{widths['Component']}}", "white"),
+                paint(formatted_accept, accept_color),
+                paint(formatted_reject, reject_color),
+            ]
+        )
+        print(row)
+
+
+def print_jitter_table(status: dict[str, str]) -> None:
+    header = ("Component", "P50", "P95", "P99", "Max")
+    widths = {"Component": 10, "P50": 12, "P95": 12, "P99": 12, "Max": 12}
+    print("\nJitter summary (ns):")
+    print(format_table_header(header, widths))
+    print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
+    for component, row in jitter_rows(status):
+        parts = [f"{component:>{widths['Component']}}"]
+        for metric in ("p50", "p95", "p99", "max"):
+            raw = row[metric]
+            color = classify(f"{component.lower()}_jitter_{metric}_ns", raw) if raw != "—" else "cyan"
+            if raw.isdigit():
+                label = METRIC_LABELS[metric]
+                formatted = f"{int(raw):{widths[label]},.0f}"
+            else:
+                label = METRIC_LABELS[metric]
+                formatted = raw.rjust(widths[label])
+            parts.append(paint(formatted, color))
+        print(" | ".join(parts))
+
+
+def parse_status(path: Path) -> dict[str, str]:
+    data: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        if not line or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        data[key.strip()] = value.strip()
+    return data
+
+
+def print_report(path: Path) -> None:
+    status = parse_status(path)
+    tick_keys = {k for k in status if k.endswith("_ticks")}
+    ignore = JITTER_KEYS | DEADLINE_KEYS | WORKER_KEYS | tick_keys
+    print_kv(status, ignore)
+    print_worker_table(status)
+    print_deadline_tick_table(status)
+    print_jitter_table(status)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Pretty-print rt_status.txt with tables.")
+    parser.add_argument("path", nargs="?", type=Path, default=Path("/tmp/rt_status.txt"))
+    parser.add_argument("--once", action="store_true", help="Run the report once and exit (default loops).")
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=0.5,
+        help="Seconds between refreshes in watch mode.",
+    )
+    args = parser.parse_args()
+    if not args.path.exists():
+        raise SystemExit(f"{args.path} not found")
+
+    if args.once:
+        print_report(args.path)
+        return
+
+    command = "cls" if os.name == "nt" else "clear"
+    try:
+        while True:
+            os.system(command)
+            print_report(args.path)
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        print("\nStopped refresh.")
+
+
+if __name__ == "__main__":
+    main()

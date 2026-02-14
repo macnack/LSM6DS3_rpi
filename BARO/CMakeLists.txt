@@ -32,6 +32,11 @@ add_executable(bmp390_read_once examples/read_once.cpp)
 target_link_libraries(bmp390_read_once PRIVATE bmp390)
 
 if(BMP390_BUILD_PYTHON)
+  if(POLICY CMP0148)
+    cmake_policy(SET CMP0148 NEW)
+  endif()
+  set(PYBIND11_FINDPYTHON ON)
+  find_package(Python COMPONENTS Interpreter Development REQUIRED)
   find_package(pybind11 CONFIG REQUIRED)
 
   pybind11_add_module(_bmp390 src/pybind_module.cpp)
