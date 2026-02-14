@@ -32,7 +32,7 @@ JITTER_KEYS = {
 }
 DEADLINE_COMPONENTS = (*JITTER_COMPONENTS, "i2c")
 DEADLINE_KEYS = {f"{component}_deadline_miss_count" for component in DEADLINE_COMPONENTS}
-PYTHON_COMPONENTS = ("python_estimator", "python_controller")
+PYTHON_COMPONENTS = ("external_estimator_accept_count", "external_estimator_accept_count")
 PYTHON_KEYS = {
     f"{component}_accept_count"
     for component in PYTHON_COMPONENTS
