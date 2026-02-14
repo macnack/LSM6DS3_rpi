@@ -207,6 +207,12 @@ MuJoCo TCP bridge (sim_net):
 python3 dummy_rocket_sim/rt_bridge.py --sensor-port 56000 --actuator-port 56001 --headless
 ```
 
+Live link health monitor (sensor/actuator rates, stalls, disconnects):
+
+```bash
+python3 tools/rt_status_report.py /tmp/rt_status.txt --monitor --interval 0.5
+```
+
 Useful CLI options:
 
 - `--duration-sec <seconds>`
