@@ -123,9 +123,9 @@ bool validate_header(uint32_t msg_magic, uint16_t version, uint16_t payload_byte
   return msg_magic == kMessageMagic && version == kMessageVersion && payload_bytes == expected_payload;
 }
 
-bool validate_py_estimator_msg(const PyEstimatorStateMsg& msg, EstimatorState& out) {
+bool validate_external_estimator_msg(const ExternalEstimatorStateMsg& msg, EstimatorState& out) {
   if (!validate_header(msg.msg_magic, msg.msg_version, msg.payload_bytes,
-                       payload_size_bytes<PyEstimatorStateMsg>())) {
+                       payload_size_bytes<ExternalEstimatorStateMsg>())) {
     return false;
   }
   if (!validate_message_crc(msg)) {
@@ -155,9 +155,9 @@ bool validate_py_estimator_msg(const PyEstimatorStateMsg& msg, EstimatorState& o
   return true;
 }
 
-bool validate_py_controller_msg(const PyControllerCommandMsg& msg, ControlCommand& out) {
+bool validate_external_controller_msg(const ExternalControllerCommandMsg& msg, ControlCommand& out) {
   if (!validate_header(msg.msg_magic, msg.msg_version, msg.payload_bytes,
-                       payload_size_bytes<PyControllerCommandMsg>())) {
+                       payload_size_bytes<ExternalControllerCommandMsg>())) {
     return false;
   }
   if (!validate_message_crc(msg)) {
@@ -341,8 +341,8 @@ class Runtime::Impl {
     const uint64_t miss_tolerance_ns = period_ns / 2U;
     uint64_t scheduled_tick_ns = monotonic_time_ns();
 
-    uint64_t python_estimator_seq_seen = 0;
-    uint64_t python_controller_seq_seen = 0;
+    uint64_t external_estimator_seq_seen = 0;
+    uint64_t external_controller_seq_seen = 0;
     uint64_t sensor_seq = 0;
     uint64_t local_tick = 0;
     bool prev_kill_active = false;
@@ -412,14 +412,14 @@ class Runtime::Impl {
         EstimatorState py_candidate{};
         bool has_py_candidate = false;
 
-        PyEstimatorStateMsg py_msg{};
+        ExternalEstimatorStateMsg py_msg{};
         uint64_t stable_seq = 0;
-        if (estimator_state_mailbox_.try_read(py_msg, &stable_seq) && stable_seq != python_estimator_seq_seen) {
-          python_estimator_seq_seen = stable_seq;
-          if (validate_py_estimator_msg(py_msg, py_candidate)) {
+        if (estimator_state_mailbox_.try_read(py_msg, &stable_seq) && stable_seq != external_estimator_seq_seen) {
+          external_estimator_seq_seen = stable_seq;
+          if (validate_external_estimator_msg(py_msg, py_candidate)) {
             has_py_candidate = true;
           } else {
-            bump_stat([](RuntimeStats& s) { ++s.python_estimator_reject_count; });
+            bump_stat([](RuntimeStats& s) { ++s.external_estimator_reject_count; });
           }
         }
 
@@ -435,7 +435,7 @@ class Runtime::Impl {
         const auto est_result = select_estimator_state(est_input, estimator_selection_state_);
         selected_est = est_result.state;
         if (est_result.source == EstimatorSelectionSource::PythonFresh) {
-          bump_stat([](RuntimeStats& s) { ++s.python_estimator_accept_count; });
+          bump_stat([](RuntimeStats& s) { ++s.external_estimator_accept_count; });
         }
         if (est_result.source == EstimatorSelectionSource::Failsafe) {
           selected_est.valid = false;
@@ -450,14 +450,14 @@ class Runtime::Impl {
         ControlCommand py_candidate{};
         bool has_py_candidate = false;
 
-        PyControllerCommandMsg py_msg{};
+        ExternalControllerCommandMsg py_msg{};
         uint64_t stable_seq = 0;
-        if (controller_cmd_mailbox_.try_read(py_msg, &stable_seq) && stable_seq != python_controller_seq_seen) {
-          python_controller_seq_seen = stable_seq;
-          if (validate_py_controller_msg(py_msg, py_candidate)) {
+        if (controller_cmd_mailbox_.try_read(py_msg, &stable_seq) && stable_seq != external_controller_seq_seen) {
+          external_controller_seq_seen = stable_seq;
+          if (validate_external_controller_msg(py_msg, py_candidate)) {
             has_py_candidate = true;
           } else {
-            bump_stat([](RuntimeStats& s) { ++s.python_controller_reject_count; });
+            bump_stat([](RuntimeStats& s) { ++s.external_controller_reject_count; });
           }
         }
 
@@ -472,7 +472,7 @@ class Runtime::Impl {
         const auto ctrl_result = select_controller_command(ctrl_input, controller_selection_state_);
         cmd = ctrl_result.command;
         if (ctrl_result.source == ControllerSelectionSource::PythonFresh) {
-          bump_stat([](RuntimeStats& s) { ++s.python_controller_accept_count; });
+          bump_stat([](RuntimeStats& s) { ++s.external_controller_accept_count; });
         }
       }
 
@@ -512,8 +512,8 @@ class Runtime::Impl {
           std::cout << "rt_core: control=" << snapshot.control_ticks
                     << " actuator=" << snapshot.actuator_ticks
                     << " imu=" << snapshot.imu_ticks
-                    << " py_est_accept=" << snapshot.python_estimator_accept_count
-                    << " py_ctrl_accept=" << snapshot.python_controller_accept_count
+                    << " ext_est_accept=" << snapshot.external_estimator_accept_count
+                    << " ext_ctrl_accept=" << snapshot.external_controller_accept_count
                     << " failsafe=" << snapshot.failsafe_activation_count
                     << " ks=" << (snapshot.killswitch_active ? "1" : "0")
                     << " ctrl_j99_ns=" << snapshot.control_jitter_p99_ns
@@ -850,10 +850,10 @@ class Runtime::Impl {
     out << "imu_ticks=" << s.imu_ticks << "\n";
     out << "i2c_ticks=" << s.i2c_ticks << "\n";
     out << "estimator_ticks=" << s.estimator_ticks << "\n";
-    out << "python_estimator_accept_count=" << s.python_estimator_accept_count << "\n";
-    out << "python_estimator_reject_count=" << s.python_estimator_reject_count << "\n";
-    out << "python_controller_accept_count=" << s.python_controller_accept_count << "\n";
-    out << "python_controller_reject_count=" << s.python_controller_reject_count << "\n";
+    out << "external_estimator_accept_count=" << s.external_estimator_accept_count << "\n";
+    out << "external_estimator_reject_count=" << s.external_estimator_reject_count << "\n";
+    out << "external_controller_accept_count=" << s.external_controller_accept_count << "\n";
+    out << "external_controller_reject_count=" << s.external_controller_reject_count << "\n";
     out << "failsafe_activation_count=" << s.failsafe_activation_count << "\n";
     out << "control_deadline_miss_count=" << s.control_deadline_miss_count << "\n";
     out << "actuator_deadline_miss_count=" << s.actuator_deadline_miss_count << "\n";
@@ -898,8 +898,8 @@ class Runtime::Impl {
   SensorHealth sensor_health_{};
 
   ShmMailbox<SensorSnapshotMsg> sensor_snapshot_mailbox_;
-  ShmMailbox<PyEstimatorStateMsg> estimator_state_mailbox_;
-  ShmMailbox<PyControllerCommandMsg> controller_cmd_mailbox_;
+  ShmMailbox<ExternalEstimatorStateMsg> estimator_state_mailbox_;
+  ShmMailbox<ExternalControllerCommandMsg> controller_cmd_mailbox_;
 
   std::unique_ptr<ImuBackend> imu_backend_;
   std::unique_ptr<BaroBackend> baro_backend_;

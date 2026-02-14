@@ -107,7 +107,7 @@ int main(int argc, char** argv) {
     const runtime::RuntimeConfig cfg = runtime::load_runtime_config(config_path);
 
     runtime::ShmMailbox<runtime::SensorSnapshotMsg> sensor_mailbox(cfg.ipc.sensor_snapshot_shm, false);
-    runtime::ShmMailbox<runtime::PyEstimatorStateMsg> estimator_mailbox(cfg.ipc.estimator_state_shm, false);
+    runtime::ShmMailbox<runtime::ExternalEstimatorStateMsg> estimator_mailbox(cfg.ipc.estimator_state_shm, false);
     open_mailbox_with_retry(sensor_mailbox, cfg.ipc, cfg.ipc.sensor_snapshot_shm);
     open_mailbox_with_retry(estimator_mailbox, cfg.ipc, cfg.ipc.estimator_state_shm);
 
@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
         }
       }
 
-      runtime::PyEstimatorStateMsg out{};
+      runtime::ExternalEstimatorStateMsg out{};
       runtime::fill_message_header(out, ++estimator_seq, runtime::monotonic_time_ns());
       out.valid = 1;
       out.q_body_to_ned = quat_from_euler(roll, pitch, yaw);

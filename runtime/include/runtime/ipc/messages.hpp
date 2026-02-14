@@ -33,7 +33,7 @@ struct SensorSnapshotMsg {
   uint32_t crc32 = 0;
 };
 
-struct PyEstimatorStateMsg {
+struct ExternalEstimatorStateMsg {
   uint32_t msg_magic = kMessageMagic;
   uint16_t msg_version = kMessageVersion;
   uint16_t payload_bytes = 0;
@@ -47,7 +47,7 @@ struct PyEstimatorStateMsg {
   uint32_t crc32 = 0;
 };
 
-struct PyControllerCommandMsg {
+struct ExternalControllerCommandMsg {
   uint32_t msg_magic = kMessageMagic;
   uint16_t msg_version = kMessageVersion;
   uint16_t payload_bytes = 0;
@@ -60,6 +60,10 @@ struct PyControllerCommandMsg {
 };
 
 #pragma pack(pop)
+
+// Backward-compatible aliases. Prefer External* names in new code.
+using PyEstimatorStateMsg = ExternalEstimatorStateMsg;
+using PyControllerCommandMsg = ExternalControllerCommandMsg;
 
 template <typename Msg>
 inline constexpr uint16_t payload_size_bytes() {

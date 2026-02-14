@@ -84,8 +84,8 @@ def main() -> int:
       s = parse_status_file(status_file)
       required = [
           "control_ticks",
-          "python_estimator_accept_count",
-          "python_controller_accept_count",
+          "external_estimator_accept_count",
+          "external_controller_accept_count",
       ]
       for key in required:
           if key not in s:
@@ -93,10 +93,10 @@ def main() -> int:
 
       if int(s["control_ticks"]) <= 0:
           raise RuntimeError("control_ticks did not advance")
-      if int(s["python_estimator_accept_count"]) <= 0:
-          raise RuntimeError("python_estimator_accept_count did not advance")
-      if int(s["python_controller_accept_count"]) <= 0:
-          raise RuntimeError("python_controller_accept_count did not advance")
+      if int(s["external_estimator_accept_count"]) <= 0:
+          raise RuntimeError("external_estimator_accept_count did not advance")
+      if int(s["external_controller_accept_count"]) <= 0:
+          raise RuntimeError("external_controller_accept_count did not advance")
 
       print("runtime_smoke_python_dev: ok")
       return 0

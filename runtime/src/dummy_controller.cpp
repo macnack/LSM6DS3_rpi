@@ -27,9 +27,9 @@ bool validate_header(uint32_t msg_magic, uint16_t version, uint16_t payload_byte
   return msg_magic == runtime::kMessageMagic && version == runtime::kMessageVersion && payload_bytes == expected_payload;
 }
 
-bool validate_estimator_message(const runtime::PyEstimatorStateMsg& msg) {
+bool validate_estimator_message(const runtime::ExternalEstimatorStateMsg& msg) {
   if (!validate_header(msg.msg_magic, msg.msg_version, msg.payload_bytes,
-                       runtime::payload_size_bytes<runtime::PyEstimatorStateMsg>())) {
+                       runtime::payload_size_bytes<runtime::ExternalEstimatorStateMsg>())) {
     return false;
   }
   if (!runtime::validate_message_crc(msg)) {
@@ -112,8 +112,8 @@ int main(int argc, char** argv) {
   try {
     const runtime::RuntimeConfig cfg = runtime::load_runtime_config(config_path);
 
-    runtime::ShmMailbox<runtime::PyEstimatorStateMsg> estimator_mailbox(cfg.ipc.estimator_state_shm, false);
-    runtime::ShmMailbox<runtime::PyControllerCommandMsg> controller_mailbox(cfg.ipc.controller_command_shm, false);
+    runtime::ShmMailbox<runtime::ExternalEstimatorStateMsg> estimator_mailbox(cfg.ipc.estimator_state_shm, false);
+    runtime::ShmMailbox<runtime::ExternalControllerCommandMsg> controller_mailbox(cfg.ipc.controller_command_shm, false);
     open_mailbox_with_retry(estimator_mailbox, cfg.ipc, cfg.ipc.estimator_state_shm);
     open_mailbox_with_retry(controller_mailbox, cfg.ipc, cfg.ipc.controller_command_shm);
 
@@ -138,7 +138,7 @@ int main(int argc, char** argv) {
 
       next_tick_ns += period_ns;
 
-      runtime::PyEstimatorStateMsg est_msg{};
+      runtime::ExternalEstimatorStateMsg est_msg{};
       uint64_t stable_seq = 0;
       if (estimator_mailbox.try_read(est_msg, &stable_seq) && stable_seq != estimator_seq_seen) {
         estimator_seq_seen = stable_seq;
@@ -159,7 +159,7 @@ int main(int argc, char** argv) {
       const double s2 = clamp(cmd_roll + cmd_pitch, -1.0, 1.0);
       const double s3 = clamp(-cmd_roll + cmd_pitch, -1.0, 1.0);
 
-      runtime::PyControllerCommandMsg out{};
+      runtime::ExternalControllerCommandMsg out{};
       runtime::fill_message_header(out, ++controller_seq, runtime::monotonic_time_ns());
       out.armed = 1;
       out.servo_norm = {static_cast<float>(s0), static_cast<float>(s1), static_cast<float>(s2), static_cast<float>(s3)};

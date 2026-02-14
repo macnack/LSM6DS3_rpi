@@ -74,10 +74,10 @@ struct RuntimeStats {
   uint64_t i2c_ticks = 0;
   uint64_t estimator_ticks = 0;
 
-  uint64_t python_estimator_accept_count = 0;
-  uint64_t python_estimator_reject_count = 0;
-  uint64_t python_controller_accept_count = 0;
-  uint64_t python_controller_reject_count = 0;
+  uint64_t external_estimator_accept_count = 0;
+  uint64_t external_estimator_reject_count = 0;
+  uint64_t external_controller_accept_count = 0;
+  uint64_t external_controller_reject_count = 0;
 
   uint64_t failsafe_activation_count = 0;
 

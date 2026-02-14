@@ -62,9 +62,9 @@ When that happens, runtime transparently falls back to file-backed shared mappin
 
 Mailbox names (defaults):
 
-- `/rt_sensor_snapshot_v1` (`SensorSnapshotMsg`: RT -> Python estimator)
-- `/rt_estimator_state_v1` (`PyEstimatorStateMsg`: Python estimator -> RT)
-- `/rt_controller_command_v1` (`PyControllerCommandMsg`: Python controller -> RT)
+- `/rt_sensor_snapshot_v1` (`SensorSnapshotMsg`: RT -> external estimator worker)
+- `/rt_estimator_state_v1` (`ExternalEstimatorStateMsg`: external estimator worker -> RT)
+- `/rt_controller_command_v1` (`ExternalControllerCommandMsg`: external controller worker -> RT)
 
 Message validation:
 
