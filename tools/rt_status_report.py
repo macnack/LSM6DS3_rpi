@@ -19,6 +19,13 @@ WARNING_KEYS = {"failsafe_activation_count", "killswitch_active"}
 CRITICAL_SUFFIXES = ("_deadline_miss_count", "_reject_count", "_trip_count")
 JITTER_THRESHOLDS = {"p50": 80000, "p95": 120000, "p99": 200000, "max": 300000}
 METRIC_LABELS = {"p50": "P50", "p95": "P95", "p99": "P99", "max": "Max"}
+JITTER_COMPONENTS = ("control", "actuator", "imu", "baro")
+JITTER_METRICS = ("p50", "p95", "p99", "max")
+JITTER_KEYS = {
+    f"{component}_jitter_{metric}_ns"
+    for component in JITTER_COMPONENTS
+    for metric in JITTER_METRICS
+}
 
 
 def paint(text: str, color: str) -> str:
@@ -47,8 +54,10 @@ def classify(key: str, value: str) -> str:
     return "cyan"
 
 
-def print_kv(status: dict[str, str]) -> None:
+def print_kv(status: dict[str, str], ignore: set[str]) -> None:
     for raw_key, raw_value in status.items():
+        if raw_key in ignore:
+            continue
         color = classify(raw_key, raw_value)
         key = paint(f"{raw_key:>38}", "cyan")
         value = paint(raw_value, color)
@@ -56,10 +65,9 @@ def print_kv(status: dict[str, str]) -> None:
 
 
 def jitter_rows(status: dict[str, str]) -> Iterable[tuple[str, dict[str, str]]]:
-    metrics = ["p50", "p95", "p99", "max"]
-    for component in ("control", "actuator", "imu", "baro"):
+    for component in JITTER_COMPONENTS:
         row = {}
-        for metric in metrics:
+        for metric in JITTER_METRICS:
             key = f"{component}_jitter_{metric}_ns"
             row[metric] = status.get(key, "—")
         yield component.title(), row
@@ -130,7 +138,9 @@ def main() -> None:
         raise SystemExit(f"{args.path} not found")
 
     status = parse_status(args.path)
-    print_kv(status)
+    tick_keys = {k for k in status if k.endswith("_ticks")}
+    ignore = JITTER_KEYS | tick_keys
+    print_kv(status, ignore)
     print_jitter_table(status)
     print_ticks_table(status)
 
