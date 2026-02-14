@@ -18,6 +18,7 @@ COLOR = {
 WARNING_KEYS = {"failsafe_activation_count", "killswitch_active"}
 CRITICAL_SUFFIXES = ("_deadline_miss_count", "_reject_count", "_trip_count")
 JITTER_THRESHOLDS = {"p50": 80000, "p95": 120000, "p99": 200000, "max": 300000}
+METRIC_LABELS = {"p50": "P50", "p95": "P95", "p99": "P99", "max": "Max"}
 
 
 def paint(text: str, color: str) -> str:
@@ -87,9 +88,11 @@ def print_jitter_table(status: dict[str, str]) -> None:
             raw = row[metric]
             color = classify(f"{component.lower()}_jitter_{metric}_ns", raw) if raw != "—" else "cyan"
             if raw.isdigit():
-                formatted = f"{int(raw):{widths[metric.upper()]},.0f}"
+                label = METRIC_LABELS[metric]
+                formatted = f"{int(raw):{widths[label]},.0f}"
             else:
-                formatted = raw.rjust(widths[metric.upper()])
+                label = METRIC_LABELS[metric]
+                formatted = raw.rjust(widths[label])
             parts.append(paint(formatted, color))
         print(" | ".join(parts))
 
