@@ -1,0 +1,10 @@
+.DS_Store
+build/
+output/
+.venv-pdf/
+.vscode/
+tmp/
+MAIN_PROGRAM_PLAN.md
+rpi_config/
+.github/
+__pycache__/
