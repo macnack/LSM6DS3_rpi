@@ -509,7 +509,7 @@ class Runtime::Impl {
         if (now_for_log - last_log_ns >= log_period_ns) {
           last_log_ns = now_for_log;
           const RuntimeStats snapshot = stats_snapshot();
-          std::cout << "rt_core: control=" << snapshot.control_ticks
+          std::cout << "[" << now_for_log << "] rt_core: control=" << snapshot.control_ticks
                     << " actuator=" << snapshot.actuator_ticks
                     << " imu=" << snapshot.imu_ticks
                     << " ext_est_accept=" << snapshot.external_estimator_accept_count
