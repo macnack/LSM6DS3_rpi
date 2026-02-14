@@ -38,5 +38,6 @@ include = [
 [project.scripts]
 rt-status-report = "tools.rt_status_report:main"
 rt-ipc-dump = "tools.rt_ipc_dump:main"
+rt-csv-recorder = "tools.rt_csv_recorder:main"
 dummy-controller = "runtime.python.dummy_controller:main"
 dummy-estimator = "runtime.python.dummy_estimator:main"

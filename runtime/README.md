@@ -213,6 +213,21 @@ Live link health monitor (sensor/actuator rates, stalls, disconnects):
 python3 tools/rt_status_report.py /tmp/rt_status.txt --monitor --interval 0.5
 ```
 
+CSV recorder (sensor + estimator + controller snapshots):
+
+```bash
+python3 tools/rt_csv_recorder.py \
+  --config ./runtime/config/rt_core_sim_python_dev.toml \
+  --output /tmp/rt_samples.csv \
+  --duration-sec 20
+```
+
+With editable install (`python3 -m pip install -e .`), you can also run:
+
+```bash
+rt-csv-recorder --config ./runtime/config/rt_core_sim_python_dev.toml --output /tmp/rt_samples.csv
+```
+
 Useful CLI options:
 
 - `--duration-sec <seconds>`
