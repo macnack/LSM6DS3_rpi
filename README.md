@@ -106,6 +106,12 @@ python -m build
 python -m pip install dist/bmp390_rpi-*.whl
 ```
 
+If you want to interact with the runtime helpers (including `rt-status-report`), install the repo in editable mode before running those tools:
+
+```bash
+python3 -m pip install -e .
+```
+
 ### One-Command Root Build (emits all wheels)
 
 The root `pyproject.toml` includes a custom build hook that runs `python -m build` in `IMU/`, `BARO/`, and `SERVO/` and places all wheels into the root `dist/` folder. It also creates a small `rpi_sensors` wheel (metadata only).

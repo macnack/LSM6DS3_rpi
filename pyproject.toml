@@ -32,3 +32,6 @@ include = [
   "BARO/**",
   "SERVO/**",
 ]
+
+[project.scripts]
+rt-status-report = "tools.rt_status_report:main"
