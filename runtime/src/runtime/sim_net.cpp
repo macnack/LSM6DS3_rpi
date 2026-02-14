@@ -45,7 +45,7 @@ int set_nonblock(int fd) {
 bool write_full(int fd, const uint8_t* data, std::size_t len) {
   std::size_t sent = 0;
   while (sent < len) {
-    const ssize_t n = ::send(fd, data + sent, len - sent, 0);
+    const ssize_t n = ::send(fd, data + sent, len - sent, MSG_NOSIGNAL);
     if (n < 0) {
       if (errno == EINTR) {
         continue;
