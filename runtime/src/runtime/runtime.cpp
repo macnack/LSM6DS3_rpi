@@ -3,6 +3,7 @@
 #include "runtime/common/time.hpp"
 #include "runtime/ipc/messages.hpp"
 #include "runtime/ipc/shm_mailbox.hpp"
+#include "runtime/runtime/sim_net.hpp"
 #include "runtime/runtime/actuator.hpp"
 #include "runtime/runtime/controller.hpp"
 #include "runtime/runtime/estimator.hpp"
@@ -267,8 +268,15 @@ class Runtime::Impl {
  private:
   void setup_backends() {
     auto setup = [this](bool sim_mode) {
-      imu_backend_ = make_imu_backend(cfg_, sim_mode);
-      baro_backend_ = make_baro_backend(cfg_, sim_mode);
+      if (sim_mode && cfg_.sim_net.enabled) {
+        sim_net_link_ = std::make_unique<SimNetLink>(cfg_.sim_net);
+        sim_net_link_->start();
+        imu_backend_ = std::make_unique<NetImuBackend>(*sim_net_link_, cfg_.timeouts);
+        baro_backend_ = std::make_unique<NetBaroBackend>(*sim_net_link_, cfg_.timeouts);
+      } else {
+        imu_backend_ = make_imu_backend(cfg_, sim_mode);
+        baro_backend_ = make_baro_backend(cfg_, sim_mode);
+      }
       if (!sim_mode && cfg_.actuator.use_hardware) {
         actuator_backend_ = std::make_unique<HardwareActuatorBackend>();
       } else {
@@ -309,6 +317,10 @@ class Runtime::Impl {
     }
     if (imu_backend_) {
       imu_backend_->stop();
+    }
+    if (sim_net_link_) {
+      sim_net_link_->stop();
+      sim_net_link_.reset();
     }
     kill_switch_.stop();
   }
@@ -501,6 +513,17 @@ class Runtime::Impl {
           s.control_jitter_p99_ns = js.p99_ns;
           s.control_jitter_max_ns = js.max_ns;
         });
+        if (sim_net_link_) {
+          const SimNetStats sn = sim_net_link_->stats_snapshot();
+          bump_stat([&](RuntimeStats& s) {
+            s.sim_net_sensor_frames = sn.sensor_frames;
+            s.sim_net_sensor_crc_fail = sn.sensor_crc_fail;
+            s.sim_net_sensor_disconnects = sn.sensor_disconnects;
+            s.sim_net_actuator_frames = sn.actuator_frames;
+            s.sim_net_actuator_send_errors = sn.actuator_send_errors;
+            s.sim_net_actuator_clients = sn.actuator_clients;
+          });
+        }
       }
 
       if (cfg_.runtime.log_period_ms > 0) {
@@ -580,6 +603,10 @@ class Runtime::Impl {
           ++s.actuator_health.cmd_missed_deadlines;
           ++s.actuator_deadline_miss_count;
         });
+      }
+
+      if (sim_net_link_) {
+        sim_net_link_->publish_actuator(cmd, now_ns);
       }
 
       const auto pulses = actuator_mapper_.map(has_cmd ? cmd : failsafe_cmd_, now_ns, failsafe_override);
@@ -880,6 +907,12 @@ class Runtime::Impl {
     out << "i2c_recovery_count=" << s.i2c_recovery_count << "\n";
     out << "killswitch_active=" << (s.killswitch_active ? "true" : "false") << "\n";
     out << "killswitch_trip_count=" << s.killswitch_trip_count << "\n";
+    out << "sim_net_sensor_frames=" << s.sim_net_sensor_frames << "\n";
+    out << "sim_net_sensor_crc_fail=" << s.sim_net_sensor_crc_fail << "\n";
+    out << "sim_net_sensor_disconnects=" << s.sim_net_sensor_disconnects << "\n";
+    out << "sim_net_actuator_frames=" << s.sim_net_actuator_frames << "\n";
+    out << "sim_net_actuator_send_errors=" << s.sim_net_actuator_send_errors << "\n";
+    out << "sim_net_actuator_clients=" << s.sim_net_actuator_clients << "\n";
   }
 
   template <typename Fn>
@@ -904,6 +937,7 @@ class Runtime::Impl {
   std::unique_ptr<ImuBackend> imu_backend_;
   std::unique_ptr<BaroBackend> baro_backend_;
   std::unique_ptr<ActuatorBackend> actuator_backend_;
+  std::unique_ptr<SimNetLink> sim_net_link_;
 
   CppEstimator cpp_estimator_;
   CppController cpp_controller_;
