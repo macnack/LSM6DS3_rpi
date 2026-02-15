@@ -98,6 +98,11 @@ Kill switch keys in `[killswitch]`:
 - `debounce_samples`: consecutive open samples required to trip
 - `latch_on_trip`: if true, kill switch remains tripped until restart
 
+Security keys in `[security]`:
+
+- `require_local_ipc_permissions`: enforce strict mailbox ownership/permissions before IPC opens
+- `require_loopback_sim_net`: require `127.0.0.1` sim TCP endpoints
+
 ## Kill Switch (NC)
 
 Kill switch is implemented as a **normally closed** hardware loop on a GPIO input.
@@ -206,6 +211,11 @@ MuJoCo TCP bridge (sim_net):
 ./build/runtime/rt_core --config ./runtime/config/rt_core_sim_mujoco_tcp.toml --status-file /tmp/rt_status.txt
 python3 dummy_rocket_sim/rt_bridge.py --sensor-port 56000 --actuator-port 56001 --headless
 ```
+
+Production recommendation:
+
+- keep `sim_net.enabled = false` in hardware production configs
+- keep `runtime.allow_auto_sim_fallback = false` to fail fast instead of silently switching modes
 
 Live link health monitor (sensor/actuator rates, stalls, disconnects):
 

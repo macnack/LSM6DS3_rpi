@@ -101,6 +101,35 @@ bool test_controller_fresh_hold_failsafe_and_sanitize() {
   return true;
 }
 
+bool test_invalid_candidates_are_rejected_and_failsafe_selected() {
+  EstimatorSelectionState est_state;
+  EstimatorSelectionInput est_in{};
+  est_in.now_ns = 10'000'000ULL;
+  est_in.policy.fresh_timeout_ns = 1'000'000ULL;
+  est_in.policy.hold_timeout_ns = 2'000'000ULL;
+  est_in.has_python_candidate = true;
+  est_in.python_candidate.valid = true;
+  est_in.python_candidate.t_ns = 9'900'000ULL;
+  est_in.python_candidate.q_body_to_ned = {0.0F, 0.0F, 0.0F, 0.0F};
+  est_in.has_cpp_candidate = false;
+  auto est_r = select_estimator_state(est_in, est_state);
+  REQUIRE(est_r.source == EstimatorSelectionSource::Failsafe, "Invalid estimator candidate must fail safe");
+
+  ControllerSelectionState ctrl_state;
+  ControllerSelectionInput ctrl_in{};
+  ctrl_in.now_ns = 20'000'000ULL;
+  ctrl_in.policy.fresh_timeout_ns = 1'000'000ULL;
+  ctrl_in.policy.hold_timeout_ns = 2'000'000ULL;
+  ctrl_in.has_python_candidate = true;
+  ctrl_in.python_candidate.valid = true;
+  ctrl_in.python_candidate.t_ns = 19'900'000ULL;
+  ctrl_in.python_candidate.servo_norm = {2.0, 0.0, 0.0, 0.0};
+  ctrl_in.failsafe_command.valid = true;
+  auto ctrl_r = select_controller_command(ctrl_in, ctrl_state);
+  REQUIRE(ctrl_r.source == ControllerSelectionSource::Failsafe, "Out-of-range controller candidate must fail safe");
+  return true;
+}
+
 }  // namespace
 
 int main() {
@@ -108,6 +137,9 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!test_controller_fresh_hold_failsafe_and_sanitize()) {
+    return EXIT_FAILURE;
+  }
+  if (!test_invalid_candidates_are_rejected_and_failsafe_selected()) {
     return EXIT_FAILURE;
   }
   std::cout << "runtime_unit_fallback: ok\n";

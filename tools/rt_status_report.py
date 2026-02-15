@@ -21,7 +21,11 @@ COLOR = {
     "white": "\033[37m",
 }
 
-WARNING_KEYS = {"failsafe_activation_count", "killswitch_active"}
+WARNING_KEYS = {
+    "failsafe_activation_count",
+    "killswitch_active",
+    "degraded_mode_active",
+}
 CRITICAL_SUFFIXES = ("_deadline_miss_count", "_reject_count", "_trip_count")
 JITTER_THRESHOLDS = {"p50": 80000, "p95": 120000, "p99": 200000, "max": 300000}
 METRIC_LABELS = {"p50": "P50", "p95": "P95", "p99": "P99", "max": "Max"}
@@ -67,6 +71,13 @@ def classify(key: str, value: str) -> str:
             return "yellow"
     if lower in WARNING_KEYS:
         return "red" if value.strip().lower() not in ("false", "0") else "green"
+    if lower == "last_failsafe_reason_name":
+        return "green" if value.strip().lower() == "none" else "yellow"
+    if lower in ("imu_consecutive_failures", "baro_consecutive_failures"):
+        try:
+            return "red" if int(value) > 0 else "green"
+        except ValueError:
+            return "yellow"
     if "jitter" in lower:
         for label, threshold in JITTER_THRESHOLDS.items():
             if lower.endswith(label):

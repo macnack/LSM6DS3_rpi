@@ -9,6 +9,8 @@
 
 namespace runtime {
 
+void set_shm_security_policy(bool require_local_permissions);
+
 class ShmRegion {
  public:
   ShmRegion(std::string name, std::size_t bytes, bool owner);
@@ -26,6 +28,8 @@ class ShmRegion {
   [[nodiscard]] std::size_t size_bytes() const noexcept;
   [[nodiscard]] bool is_open() const noexcept;
   [[nodiscard]] const std::string& name() const noexcept;
+  [[nodiscard]] bool using_file_fallback() const noexcept;
+  [[nodiscard]] const std::string& fallback_path_name() const noexcept;
 
  private:
   [[nodiscard]] std::string fallback_path() const;

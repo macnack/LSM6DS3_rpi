@@ -11,7 +11,8 @@ namespace runtime {
 
 struct RuntimeSection {
   bool sim_mode = true;
-  bool auto_sim_on_hw_error = true;
+  bool fail_fast_on_hw_error = true;
+  bool allow_auto_sim_fallback = false;
   double run_duration_s = 0.0;
   uint32_t log_period_ms = 1000;
 };
@@ -46,6 +47,13 @@ struct TimeoutsSection {
   uint32_t actuator_cmd_timeout_ms = 60;
   uint32_t imu_stale_ms = 20;
   uint32_t baro_stale_ms = 300;
+  uint32_t max_consecutive_imu_failures = 5;
+  uint32_t max_consecutive_baro_failures = 5;
+};
+
+struct SecuritySection {
+  bool require_local_ipc_permissions = true;
+  bool require_loopback_sim_net = true;
 };
 
 struct IpcSection {
@@ -125,6 +133,7 @@ struct RuntimeConfig {
   ModesSection modes;
   ThreadsSection threads;
   TimeoutsSection timeouts;
+  SecuritySection security;
   IpcSection ipc;
   ImuSection imu;
   BaroSection baro;

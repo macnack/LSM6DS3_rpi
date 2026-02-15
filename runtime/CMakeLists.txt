@@ -16,6 +16,7 @@ add_library(runtime_core STATIC
   src/runtime/actuator.cpp
   src/runtime/sensors.cpp
   src/runtime/sim_net.cpp
+  src/runtime/external_time_validation.cpp
   src/runtime/kill_switch.cpp
   src/runtime/rt_thread.cpp
   src/runtime/runtime.cpp
@@ -77,6 +78,11 @@ if(BUILD_TESTING)
   target_link_libraries(runtime_unit_ipc PRIVATE runtime_core)
   target_compile_options(runtime_unit_ipc PRIVATE -Wall -Wextra -Wpedantic)
   add_test(NAME runtime_unit_ipc COMMAND runtime_unit_ipc)
+
+  add_executable(runtime_unit_external_time_validation tests/test_external_time_validation.cpp)
+  target_link_libraries(runtime_unit_external_time_validation PRIVATE runtime_core)
+  target_compile_options(runtime_unit_external_time_validation PRIVATE -Wall -Wextra -Wpedantic)
+  add_test(NAME runtime_unit_external_time_validation COMMAND runtime_unit_external_time_validation)
 
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
   configure_file(tests/smoke_rt_core.toml.in ${CMAKE_CURRENT_BINARY_DIR}/smoke_rt_core.toml @ONLY)

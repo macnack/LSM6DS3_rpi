@@ -66,6 +66,15 @@ struct ActuatorHealth {
   bool failsafe_active = false;
 };
 
+enum class FailsafeReason : uint32_t {
+  None = 0,
+  CommandTimeout = 1,
+  ImuStale = 2,
+  IoErrorLatch = 3,
+  KillSwitch = 4,
+  InvalidEstimator = 5,
+};
+
 struct RuntimeStats {
   ActuatorHealth actuator_health{};
   uint64_t control_ticks = 0;
@@ -121,6 +130,16 @@ struct RuntimeStats {
   uint64_t sim_net_actuator_frames = 0;
   uint64_t sim_net_actuator_send_errors = 0;
   uint64_t sim_net_actuator_clients = 0;
+
+  bool degraded_mode_active = false;
+  uint32_t last_failsafe_reason = static_cast<uint32_t>(FailsafeReason::None);
+  uint64_t imu_consecutive_failures = 0;
+  uint64_t baro_consecutive_failures = 0;
+  uint64_t ipc_permission_reject_count = 0;
+  uint64_t external_msg_stale_reject_count = 0;
+  uint64_t external_msg_schema_reject_count = 0;
+  uint64_t external_msg_crc_reject_count = 0;
+  uint64_t external_msg_time_regression_reject_count = 0;
 };
 
 }  // namespace runtime

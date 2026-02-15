@@ -1,6 +1,7 @@
 [runtime]
 sim_mode = true
-auto_sim_on_hw_error = true
+fail_fast_on_hw_error = true
+allow_auto_sim_fallback = false
 run_duration_s = 4
 log_period_ms = 200
 
@@ -30,6 +31,13 @@ estimator_hold_ms = 150
 actuator_cmd_timeout_ms = 120
 imu_stale_ms = 50
 baro_stale_ms = 500
+max_consecutive_imu_failures = 5
+max_consecutive_baro_failures = 5
+
+[security]
+require_local_ipc_permissions = true
+require_loopback_sim_net = true
+
 
 [ipc]
 sensor_snapshot_shm = "/rt_sensor_snapshot_test_v1"

@@ -86,6 +86,8 @@ def main() -> int:
           "control_ticks",
           "external_estimator_accept_count",
           "external_controller_accept_count",
+          "degraded_mode_active",
+          "last_failsafe_reason_name",
       ]
       for key in required:
           if key not in s:
@@ -97,6 +99,8 @@ def main() -> int:
           raise RuntimeError("external_estimator_accept_count did not advance")
       if int(s["external_controller_accept_count"]) <= 0:
           raise RuntimeError("external_controller_accept_count did not advance")
+      if s["degraded_mode_active"].lower() != "false":
+          raise RuntimeError("degraded_mode_active unexpectedly true in smoke run")
 
       print("runtime_smoke_python_dev: ok")
       return 0

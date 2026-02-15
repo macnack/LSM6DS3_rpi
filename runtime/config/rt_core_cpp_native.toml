@@ -1,6 +1,8 @@
 [runtime]
 sim_mode = false
-auto_sim_on_hw_error = true
+# Production-safe startup policy: fail hard on HW init errors; never auto-switch to sim.
+fail_fast_on_hw_error = true
+allow_auto_sim_fallback = false
 run_duration_s = 0
 log_period_ms = 1000
 
@@ -30,6 +32,13 @@ estimator_hold_ms = 120
 actuator_cmd_timeout_ms = 60
 imu_stale_ms = 20
 baro_stale_ms = 300
+max_consecutive_imu_failures = 5
+max_consecutive_baro_failures = 5
+
+[security]
+require_local_ipc_permissions = true
+require_loopback_sim_net = true
+
 
 [ipc]
 sensor_snapshot_shm = "/rt_sensor_snapshot_v1"

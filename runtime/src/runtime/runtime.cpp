@@ -7,6 +7,7 @@
 #include "runtime/runtime/actuator.hpp"
 #include "runtime/runtime/controller.hpp"
 #include "runtime/runtime/estimator.hpp"
+#include "runtime/runtime/external_time_validation.hpp"
 #include "runtime/runtime/fallback.hpp"
 #include "runtime/runtime/kill_switch.hpp"
 #include "runtime/runtime/rt_thread.hpp"
@@ -124,19 +125,44 @@ bool validate_header(uint32_t msg_magic, uint16_t version, uint16_t payload_byte
   return msg_magic == kMessageMagic && version == kMessageVersion && payload_bytes == expected_payload;
 }
 
-bool validate_external_estimator_msg(const ExternalEstimatorStateMsg& msg, EstimatorState& out) {
+enum class ExternalMsgValidationError : uint8_t {
+  None = 0,
+  Schema = 1,
+  Crc = 2,
+  Payload = 3,
+  Stale = 4,
+  TimeRegression = 5,
+};
+
+bool validate_external_estimator_msg(const ExternalEstimatorStateMsg& msg, EstimatorState& out,
+                                     ExternalMsgValidationError* error_out = nullptr) {
+  if (error_out != nullptr) {
+    *error_out = ExternalMsgValidationError::None;
+  }
   if (!validate_header(msg.msg_magic, msg.msg_version, msg.payload_bytes,
                        payload_size_bytes<ExternalEstimatorStateMsg>())) {
+    if (error_out != nullptr) {
+      *error_out = ExternalMsgValidationError::Schema;
+    }
     return false;
   }
   if (!validate_message_crc(msg)) {
+    if (error_out != nullptr) {
+      *error_out = ExternalMsgValidationError::Crc;
+    }
     return false;
   }
   if (msg.valid == 0) {
+    if (error_out != nullptr) {
+      *error_out = ExternalMsgValidationError::Payload;
+    }
     return false;
   }
   if (!is_finite_array(msg.q_body_to_ned) || !is_finite_array(msg.vel_ned_mps) ||
       !is_finite_array(msg.pos_ned_m)) {
+    if (error_out != nullptr) {
+      *error_out = ExternalMsgValidationError::Payload;
+    }
     return false;
   }
 
@@ -145,6 +171,9 @@ bool validate_external_estimator_msg(const ExternalEstimatorStateMsg& msg, Estim
                                   static_cast<double>(msg.q_body_to_ned[2]) * msg.q_body_to_ned[2] +
                                   static_cast<double>(msg.q_body_to_ned[3]) * msg.q_body_to_ned[3]);
   if (q_norm < 0.85 || q_norm > 1.15) {
+    if (error_out != nullptr) {
+      *error_out = ExternalMsgValidationError::Payload;
+    }
     return false;
   }
 
@@ -156,12 +185,22 @@ bool validate_external_estimator_msg(const ExternalEstimatorStateMsg& msg, Estim
   return true;
 }
 
-bool validate_external_controller_msg(const ExternalControllerCommandMsg& msg, ControlCommand& out) {
+bool validate_external_controller_msg(const ExternalControllerCommandMsg& msg, ControlCommand& out,
+                                      ExternalMsgValidationError* error_out = nullptr) {
+  if (error_out != nullptr) {
+    *error_out = ExternalMsgValidationError::None;
+  }
   if (!validate_header(msg.msg_magic, msg.msg_version, msg.payload_bytes,
                        payload_size_bytes<ExternalControllerCommandMsg>())) {
+    if (error_out != nullptr) {
+      *error_out = ExternalMsgValidationError::Schema;
+    }
     return false;
   }
   if (!validate_message_crc(msg)) {
+    if (error_out != nullptr) {
+      *error_out = ExternalMsgValidationError::Crc;
+    }
     return false;
   }
 
@@ -173,9 +212,15 @@ bool validate_external_controller_msg(const ExternalControllerCommandMsg& msg, C
   for (std::size_t i = 0; i < kServoCount; ++i) {
     const float value = msg.servo_norm[i];
     if (!std::isfinite(value)) {
+      if (error_out != nullptr) {
+        *error_out = ExternalMsgValidationError::Payload;
+      }
       return false;
     }
     if (value < -1.0F || value > 1.0F) {
+      if (error_out != nullptr) {
+        *error_out = ExternalMsgValidationError::Payload;
+      }
       return false;
     }
     out.servo_norm[i] = value;
@@ -193,6 +238,37 @@ ControlCommand make_failsafe_command(const std::array<ServoSection, kServoCount>
     cmd.servo_norm[i] = servos[i].failsafe_norm;
   }
   return cmd;
+}
+
+const char* failsafe_reason_name(FailsafeReason reason) {
+  switch (reason) {
+    case FailsafeReason::None:
+      return "none";
+    case FailsafeReason::CommandTimeout:
+      return "command_timeout";
+    case FailsafeReason::ImuStale:
+      return "imu_stale";
+    case FailsafeReason::IoErrorLatch:
+      return "io_error_latch";
+    case FailsafeReason::KillSwitch:
+      return "kill_switch";
+    case FailsafeReason::InvalidEstimator:
+      return "invalid_estimator";
+  }
+  return "unknown";
+}
+
+bool is_loopback_host(const std::string& host) {
+  return host == "127.0.0.1";
+}
+
+void record_external_time_reject(ExternalTimeValidationResult result, RuntimeStats& stats) {
+  if (result == ExternalTimeValidationResult::RejectRegression) {
+    ++stats.external_msg_time_regression_reject_count;
+  } else if (result == ExternalTimeValidationResult::RejectStale ||
+             result == ExternalTimeValidationResult::RejectFuture) {
+    ++stats.external_msg_stale_reject_count;
+  }
 }
 
 }  // namespace
@@ -213,6 +289,7 @@ class Runtime::Impl {
         kill_switch_(cfg_.killswitch) {}
 
   void run() {
+    bump_stat([this](RuntimeStats& s) { s.degraded_mode_active = degraded_mode_active_.load(std::memory_order_relaxed); });
     setup_backends();
     setup_mailboxes();
 
@@ -268,6 +345,14 @@ class Runtime::Impl {
  private:
   void setup_backends() {
     auto setup = [this](bool sim_mode) {
+      if (cfg_.security.require_loopback_sim_net && cfg_.sim_net.enabled) {
+        if (!is_loopback_host(cfg_.sim_net.sensor_host) ||
+            !is_loopback_host(cfg_.sim_net.actuator_bind_host)) {
+          throw std::runtime_error(
+              "sim_net endpoints must be 127.0.0.1 when security.require_loopback_sim_net=true");
+        }
+      }
+
       if (sim_mode && cfg_.sim_net.enabled) {
         sim_net_link_ = std::make_unique<SimNetLink>(cfg_.sim_net);
         sim_net_link_->start();
@@ -292,10 +377,18 @@ class Runtime::Impl {
     try {
       setup(sim_mode_);
     } catch (const std::exception& ex) {
-      if (!sim_mode_ && cfg_.runtime.auto_sim_on_hw_error) {
-        std::cerr << "Hardware startup failed, switching to sim_mode: " << ex.what() << "\n";
+      // Production-safe startup policy:
+      // - allow_auto_sim_fallback=false => fail fast on hardware startup errors.
+      // - allow_auto_sim_fallback=true  => explicit degraded sim fallback path.
+      if (!sim_mode_ && cfg_.runtime.allow_auto_sim_fallback) {
+        std::cerr << "RT_CORE_EVENT severity=ERROR event=hardware_startup_failed action=sim_fallback reason=\""
+                  << ex.what() << "\"\n";
         sim_mode_ = true;
+        degraded_mode_active_.store(true, std::memory_order_relaxed);
+        bump_stat([](RuntimeStats& s) { s.degraded_mode_active = true; });
         setup(true);
+      } else if (!sim_mode_ && cfg_.runtime.fail_fast_on_hw_error) {
+        throw;
       } else {
         throw;
       }
@@ -303,9 +396,19 @@ class Runtime::Impl {
   }
 
   void setup_mailboxes() {
-    sensor_snapshot_mailbox_.open(true);
-    estimator_state_mailbox_.open(true);
-    controller_cmd_mailbox_.open(true);
+    set_shm_security_policy(cfg_.security.require_local_ipc_permissions);
+    try {
+      sensor_snapshot_mailbox_.open(true);
+      estimator_state_mailbox_.open(true);
+      controller_cmd_mailbox_.open(true);
+    } catch (const std::exception&) {
+      bump_stat([](RuntimeStats& s) {
+        ++s.ipc_permission_reject_count;
+        s.degraded_mode_active = true;
+      });
+      degraded_mode_active_.store(true, std::memory_order_relaxed);
+      throw;
+    }
   }
 
   void shutdown_backends() noexcept {
@@ -355,6 +458,8 @@ class Runtime::Impl {
 
     uint64_t external_estimator_seq_seen = 0;
     uint64_t external_controller_seq_seen = 0;
+    uint64_t external_estimator_t_ns_seen = 0;
+    uint64_t external_controller_t_ns_seen = 0;
     uint64_t sensor_seq = 0;
     uint64_t local_tick = 0;
     bool prev_kill_active = false;
@@ -428,10 +533,29 @@ class Runtime::Impl {
         uint64_t stable_seq = 0;
         if (estimator_state_mailbox_.try_read(py_msg, &stable_seq) && stable_seq != external_estimator_seq_seen) {
           external_estimator_seq_seen = stable_seq;
-          if (validate_external_estimator_msg(py_msg, py_candidate)) {
-            has_py_candidate = true;
+          ExternalMsgValidationError err = ExternalMsgValidationError::None;
+          if (validate_external_estimator_msg(py_msg, py_candidate, &err)) {
+            const auto time_result =
+                validate_external_timestamp(monotonic_time_ns(), py_candidate.t_ns, external_estimator_t_ns_seen,
+                                            ns_from_ms(cfg_.timeouts.estimator_fresh_ms));
+            if (time_result == ExternalTimeValidationResult::Accept) {
+              external_estimator_t_ns_seen = py_candidate.t_ns;
+              has_py_candidate = true;
+            } else {
+              bump_stat([time_result](RuntimeStats& s) {
+                ++s.external_estimator_reject_count;
+                record_external_time_reject(time_result, s);
+              });
+            }
           } else {
-            bump_stat([](RuntimeStats& s) { ++s.external_estimator_reject_count; });
+            bump_stat([err](RuntimeStats& s) {
+              ++s.external_estimator_reject_count;
+              if (err == ExternalMsgValidationError::Schema) {
+                ++s.external_msg_schema_reject_count;
+              } else if (err == ExternalMsgValidationError::Crc) {
+                ++s.external_msg_crc_reject_count;
+              }
+            });
           }
         }
 
@@ -466,10 +590,29 @@ class Runtime::Impl {
         uint64_t stable_seq = 0;
         if (controller_cmd_mailbox_.try_read(py_msg, &stable_seq) && stable_seq != external_controller_seq_seen) {
           external_controller_seq_seen = stable_seq;
-          if (validate_external_controller_msg(py_msg, py_candidate)) {
-            has_py_candidate = true;
+          ExternalMsgValidationError err = ExternalMsgValidationError::None;
+          if (validate_external_controller_msg(py_msg, py_candidate, &err)) {
+            const auto time_result =
+                validate_external_timestamp(monotonic_time_ns(), py_candidate.t_ns, external_controller_t_ns_seen,
+                                            ns_from_ms(cfg_.timeouts.controller_fresh_ms));
+            if (time_result == ExternalTimeValidationResult::Accept) {
+              external_controller_t_ns_seen = py_candidate.t_ns;
+              has_py_candidate = true;
+            } else {
+              bump_stat([time_result](RuntimeStats& s) {
+                ++s.external_controller_reject_count;
+                record_external_time_reject(time_result, s);
+              });
+            }
           } else {
-            bump_stat([](RuntimeStats& s) { ++s.external_controller_reject_count; });
+            bump_stat([err](RuntimeStats& s) {
+              ++s.external_controller_reject_count;
+              if (err == ExternalMsgValidationError::Schema) {
+                ++s.external_msg_schema_reject_count;
+              } else if (err == ExternalMsgValidationError::Crc) {
+                ++s.external_msg_crc_reject_count;
+              }
+            });
           }
         }
 
@@ -488,10 +631,21 @@ class Runtime::Impl {
         }
       }
 
-      if (imu_stale || kill_active || !selected_est.valid) {
+      FailsafeReason control_failsafe_reason = FailsafeReason::None;
+      if (kill_active) {
+        control_failsafe_reason = FailsafeReason::KillSwitch;
+      } else if (imu_stale) {
+        control_failsafe_reason = FailsafeReason::ImuStale;
+      } else if (!selected_est.valid) {
+        control_failsafe_reason = FailsafeReason::InvalidEstimator;
+      }
+
+      if (control_failsafe_reason != FailsafeReason::None) {
         cmd = failsafe_cmd_;
         cmd.t_ns = now_ns;
         cmd.armed = false;
+        const auto failsafe_reason_u32 = static_cast<uint32_t>(control_failsafe_reason);
+        bump_stat([failsafe_reason_u32](RuntimeStats& s) { s.last_failsafe_reason = failsafe_reason_u32; });
       }
 
       cmd = sanitize_actuator_command(cmd, -1.0, 1.0);
@@ -538,9 +692,12 @@ class Runtime::Impl {
                     << " ext_est_accept=" << snapshot.external_estimator_accept_count
                     << " ext_ctrl_accept=" << snapshot.external_controller_accept_count
                     << " failsafe=" << snapshot.failsafe_activation_count
+                    << " failsafe_reason=" << failsafe_reason_name(
+                           static_cast<FailsafeReason>(snapshot.last_failsafe_reason))
                     << " ks=" << (snapshot.killswitch_active ? "1" : "0")
                     << " ctrl_j99_ns=" << snapshot.control_jitter_p99_ns
-                    << " i2c_recovery=" << snapshot.i2c_recovery_count << "\n";
+                    << " i2c_recovery=" << snapshot.i2c_recovery_count
+                    << " degraded=" << (snapshot.degraded_mode_active ? "1" : "0") << "\n";
         }
       }
 
@@ -594,8 +751,22 @@ class Runtime::Impl {
           (now_ns > imu.t_ns && (now_ns - imu.t_ns) > ns_from_ms(cfg_.timeouts.imu_stale_ms));
       const bool kill_active = kill_switch_active_.load(std::memory_order_relaxed);
       bool failsafe_override = failsafe_latched || cmd_timed_out || imu_stale || kill_active;
+      FailsafeReason failsafe_reason = FailsafeReason::None;
+      if (failsafe_latched) {
+        failsafe_reason = FailsafeReason::IoErrorLatch;
+      } else if (kill_active) {
+        failsafe_reason = FailsafeReason::KillSwitch;
+      } else if (imu_stale) {
+        failsafe_reason = FailsafeReason::ImuStale;
+      } else if (cmd_timed_out) {
+        failsafe_reason = FailsafeReason::CommandTimeout;
+      }
       if (failsafe_override) {
-        bump_stat([](RuntimeStats& s) { ++s.failsafe_activation_count; });
+        const auto failsafe_reason_u32 = static_cast<uint32_t>(failsafe_reason);
+        bump_stat([failsafe_reason_u32](RuntimeStats& s) {
+          ++s.failsafe_activation_count;
+          s.last_failsafe_reason = failsafe_reason_u32;
+        });
       }
 
       if (!has_cmd || cmd_timed_out) {
@@ -621,6 +792,9 @@ class Runtime::Impl {
         if (cfg_.actuator.latch_failsafe_on_io_errors &&
             consecutive_io_errors >= cfg_.actuator.max_io_errors_before_latch) {
           failsafe_latched = true;
+          bump_stat([](RuntimeStats& s) {
+            s.last_failsafe_reason = static_cast<uint32_t>(FailsafeReason::IoErrorLatch);
+          });
         }
       }
 
@@ -656,6 +830,7 @@ class Runtime::Impl {
     const uint64_t miss_tolerance_ns = period_ns / 2U;
     uint64_t scheduled_tick_ns = monotonic_time_ns();
     uint64_t local_tick = 0;
+    uint32_t consecutive_imu_failures = 0;
 
     while (!stop_requested_.load(std::memory_order_relaxed)) {
       const uint64_t now_ns = monotonic_time_ns();
@@ -671,11 +846,31 @@ class Runtime::Impl {
         if (!sample.t_ns) {
           sample.t_ns = now_ns;
         }
+        consecutive_imu_failures = sample.valid ? 0 : (consecutive_imu_failures + 1U);
+        bump_stat([consecutive_imu_failures](RuntimeStats& s) {
+          s.imu_consecutive_failures = consecutive_imu_failures;
+        });
+        if (consecutive_imu_failures >= cfg_.timeouts.max_consecutive_imu_failures) {
+          degraded_mode_active_.store(true, std::memory_order_relaxed);
+          bump_stat([](RuntimeStats& s) { s.degraded_mode_active = true; });
+        }
 
         std::lock_guard<std::mutex> lock(shared_.mutex);
         shared_.imu = sample;
       } catch (const std::exception&) {
+        ++consecutive_imu_failures;
         ++sensor_health_.imu_read_errors;
+        if (consecutive_imu_failures >= cfg_.timeouts.max_consecutive_imu_failures) {
+          degraded_mode_active_.store(true, std::memory_order_relaxed);
+          bump_stat([consecutive_imu_failures](RuntimeStats& s) {
+            s.degraded_mode_active = true;
+            s.imu_consecutive_failures = consecutive_imu_failures;
+          });
+        } else {
+          bump_stat([consecutive_imu_failures](RuntimeStats& s) {
+            s.imu_consecutive_failures = consecutive_imu_failures;
+          });
+        }
       }
 
       ++local_tick;
@@ -759,11 +954,23 @@ class Runtime::Impl {
           jobs[idx].poll_once(now_ns);
           if (jobs[idx].name == "baro") {
             baro_consecutive_errors = 0;
+            bump_stat([](RuntimeStats& s) { s.baro_consecutive_failures = 0; });
           }
         } catch (const std::exception&) {
           ++sensor_health_.i2c_read_errors;
           if (jobs[idx].name == "baro") {
             ++baro_consecutive_errors;
+            if (baro_consecutive_errors >= cfg_.timeouts.max_consecutive_baro_failures) {
+              degraded_mode_active_.store(true, std::memory_order_relaxed);
+              bump_stat([baro_consecutive_errors](RuntimeStats& s) {
+                s.degraded_mode_active = true;
+                s.baro_consecutive_failures = baro_consecutive_errors;
+              });
+            } else {
+              bump_stat([baro_consecutive_errors](RuntimeStats& s) {
+                s.baro_consecutive_failures = baro_consecutive_errors;
+              });
+            }
             if (baro_consecutive_errors >= cfg_.baro.recovery_error_threshold) {
               try {
                 baro_backend_->stop();
@@ -773,7 +980,10 @@ class Runtime::Impl {
               try {
                 baro_backend_->start();
                 baro_consecutive_errors = 0;
-                bump_stat([](RuntimeStats& s) { ++s.i2c_recovery_count; });
+                bump_stat([](RuntimeStats& s) {
+                  ++s.i2c_recovery_count;
+                  s.baro_consecutive_failures = 0;
+                });
               } catch (...) {
               }
             }
@@ -872,6 +1082,7 @@ class Runtime::Impl {
     }
 
     out << "sim_mode=" << (sim_mode_ ? "true" : "false") << "\n";
+    out << "degraded_mode_active=" << (s.degraded_mode_active ? "true" : "false") << "\n";
     out << "control_ticks=" << s.control_ticks << "\n";
     out << "actuator_ticks=" << s.actuator_ticks << "\n";
     out << "imu_ticks=" << s.imu_ticks << "\n";
@@ -882,6 +1093,9 @@ class Runtime::Impl {
     out << "external_controller_accept_count=" << s.external_controller_accept_count << "\n";
     out << "external_controller_reject_count=" << s.external_controller_reject_count << "\n";
     out << "failsafe_activation_count=" << s.failsafe_activation_count << "\n";
+    out << "last_failsafe_reason=" << s.last_failsafe_reason << "\n";
+    out << "last_failsafe_reason_name="
+        << failsafe_reason_name(static_cast<FailsafeReason>(s.last_failsafe_reason)) << "\n";
     out << "control_deadline_miss_count=" << s.control_deadline_miss_count << "\n";
     out << "actuator_deadline_miss_count=" << s.actuator_deadline_miss_count << "\n";
     out << "imu_deadline_miss_count=" << s.imu_deadline_miss_count << "\n";
@@ -905,6 +1119,14 @@ class Runtime::Impl {
     out << "actuator_cmd_age_last_ns=" << s.actuator_cmd_age_last_ns << "\n";
     out << "actuator_cmd_age_max_ns=" << s.actuator_cmd_age_max_ns << "\n";
     out << "i2c_recovery_count=" << s.i2c_recovery_count << "\n";
+    out << "imu_consecutive_failures=" << s.imu_consecutive_failures << "\n";
+    out << "baro_consecutive_failures=" << s.baro_consecutive_failures << "\n";
+    out << "ipc_permission_reject_count=" << s.ipc_permission_reject_count << "\n";
+    out << "external_msg_stale_reject_count=" << s.external_msg_stale_reject_count << "\n";
+    out << "external_msg_schema_reject_count=" << s.external_msg_schema_reject_count << "\n";
+    out << "external_msg_crc_reject_count=" << s.external_msg_crc_reject_count << "\n";
+    out << "external_msg_time_regression_reject_count=" << s.external_msg_time_regression_reject_count
+        << "\n";
     out << "killswitch_active=" << (s.killswitch_active ? "true" : "false") << "\n";
     out << "killswitch_trip_count=" << s.killswitch_trip_count << "\n";
     out << "sim_net_sensor_frames=" << s.sim_net_sensor_frames << "\n";
@@ -926,6 +1148,7 @@ class Runtime::Impl {
 
   std::atomic<bool> stop_requested_{false};
   bool sim_mode_;
+  std::atomic<bool> degraded_mode_active_{false};
 
   SharedState shared_;
   SensorHealth sensor_health_{};

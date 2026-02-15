@@ -161,7 +161,8 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   const TomlDocument doc = parse_toml_file(path);
 
   const std::unordered_set<std::string> required_sections = {
-      "runtime",      "modes",     "threads",       "timeouts",   "ipc",
+      "runtime",      "modes",     "threads",       "timeouts",   "security",
+      "ipc",
       "imu",          "baro",      "actuator",      "servo0",     "servo1",
       "servo2",       "servo3",    "estimator_cpp", "controller_cpp",
   };
@@ -179,11 +180,15 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   RuntimeConfig cfg;
 
   const auto& runtime = require_section(doc, "runtime");
-  validate_allowed_keys(runtime, {"sim_mode", "auto_sim_on_hw_error", "run_duration_s", "log_period_ms"},
+  validate_allowed_keys(runtime, {"sim_mode", "fail_fast_on_hw_error", "allow_auto_sim_fallback",
+                                  "run_duration_s", "log_period_ms"},
                         "runtime");
   maybe_apply(runtime, "sim_mode", [&](const TomlValue& v) { cfg.runtime.sim_mode = as_bool(v, "runtime.sim_mode"); });
-  maybe_apply(runtime, "auto_sim_on_hw_error",
-              [&](const TomlValue& v) { cfg.runtime.auto_sim_on_hw_error = as_bool(v, "runtime.auto_sim_on_hw_error"); });
+  maybe_apply(runtime, "fail_fast_on_hw_error",
+              [&](const TomlValue& v) { cfg.runtime.fail_fast_on_hw_error = as_bool(v, "runtime.fail_fast_on_hw_error"); });
+  maybe_apply(runtime, "allow_auto_sim_fallback", [&](const TomlValue& v) {
+    cfg.runtime.allow_auto_sim_fallback = as_bool(v, "runtime.allow_auto_sim_fallback");
+  });
   maybe_apply(runtime, "run_duration_s",
               [&](const TomlValue& v) { cfg.runtime.run_duration_s = as_double(v, "runtime.run_duration_s"); });
   maybe_apply(runtime, "log_period_ms",
@@ -218,7 +223,8 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   const auto& timeouts = require_section(doc, "timeouts");
   validate_allowed_keys(timeouts,
                         {"controller_fresh_ms", "controller_hold_ms", "estimator_fresh_ms", "estimator_hold_ms",
-                         "actuator_cmd_timeout_ms", "imu_stale_ms", "baro_stale_ms"},
+                         "actuator_cmd_timeout_ms", "imu_stale_ms", "baro_stale_ms",
+                         "max_consecutive_imu_failures", "max_consecutive_baro_failures"},
                         "timeouts");
   maybe_apply(timeouts, "controller_fresh_ms",
               [&](const TomlValue& v) { cfg.timeouts.controller_fresh_ms = as_u32(v, "timeouts.controller_fresh_ms"); });
@@ -233,6 +239,22 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   });
   maybe_apply(timeouts, "imu_stale_ms", [&](const TomlValue& v) { cfg.timeouts.imu_stale_ms = as_u32(v, "timeouts.imu_stale_ms"); });
   maybe_apply(timeouts, "baro_stale_ms", [&](const TomlValue& v) { cfg.timeouts.baro_stale_ms = as_u32(v, "timeouts.baro_stale_ms"); });
+  maybe_apply(timeouts, "max_consecutive_imu_failures", [&](const TomlValue& v) {
+    cfg.timeouts.max_consecutive_imu_failures = as_u32(v, "timeouts.max_consecutive_imu_failures");
+  });
+  maybe_apply(timeouts, "max_consecutive_baro_failures", [&](const TomlValue& v) {
+    cfg.timeouts.max_consecutive_baro_failures = as_u32(v, "timeouts.max_consecutive_baro_failures");
+  });
+
+  const auto& security = require_section(doc, "security");
+  validate_allowed_keys(security, {"require_local_ipc_permissions", "require_loopback_sim_net"},
+                        "security");
+  maybe_apply(security, "require_local_ipc_permissions", [&](const TomlValue& v) {
+    cfg.security.require_local_ipc_permissions = as_bool(v, "security.require_local_ipc_permissions");
+  });
+  maybe_apply(security, "require_loopback_sim_net", [&](const TomlValue& v) {
+    cfg.security.require_loopback_sim_net = as_bool(v, "security.require_loopback_sim_net");
+  });
 
   const auto& ipc = require_section(doc, "ipc");
   validate_allowed_keys(ipc,
@@ -394,6 +416,24 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   if (cfg.baro.recovery_error_threshold == 0) {
     throw std::runtime_error("baro.recovery_error_threshold must be >= 1");
   }
+  if (cfg.timeouts.max_consecutive_imu_failures == 0) {
+    throw std::runtime_error("timeouts.max_consecutive_imu_failures must be >= 1");
+  }
+  if (cfg.timeouts.max_consecutive_baro_failures == 0) {
+    throw std::runtime_error("timeouts.max_consecutive_baro_failures must be >= 1");
+  }
+  if (cfg.security.require_loopback_sim_net && cfg.sim_net.enabled) {
+    const bool sensor_loopback = (cfg.sim_net.sensor_host == "127.0.0.1");
+    const bool actuator_loopback = (cfg.sim_net.actuator_bind_host == "127.0.0.1");
+    if (!sensor_loopback || !actuator_loopback) {
+      throw std::runtime_error(
+          "sim_net endpoints must be 127.0.0.1 when security.require_loopback_sim_net=true");
+    }
+  }
+  if (!cfg.runtime.allow_auto_sim_fallback && !cfg.runtime.fail_fast_on_hw_error) {
+    throw std::runtime_error(
+        "runtime.fail_fast_on_hw_error must be true when runtime.allow_auto_sim_fallback is false");
+  }
 
   return cfg;
 }
@@ -403,7 +443,8 @@ std::string runtime_config_to_string(const RuntimeConfig& cfg) {
   oss << std::fixed << std::setprecision(3);
   oss << "[runtime]\n";
   oss << "sim_mode=" << (cfg.runtime.sim_mode ? "true" : "false") << "\n";
-  oss << "auto_sim_on_hw_error=" << (cfg.runtime.auto_sim_on_hw_error ? "true" : "false") << "\n";
+  oss << "fail_fast_on_hw_error=" << (cfg.runtime.fail_fast_on_hw_error ? "true" : "false") << "\n";
+  oss << "allow_auto_sim_fallback=" << (cfg.runtime.allow_auto_sim_fallback ? "true" : "false") << "\n";
   oss << "run_duration_s=" << cfg.runtime.run_duration_s << "\n";
   oss << "log_period_ms=" << cfg.runtime.log_period_ms << "\n";
 
@@ -420,6 +461,10 @@ std::string runtime_config_to_string(const RuntimeConfig& cfg) {
   oss << "sensor_snapshot_shm=" << cfg.ipc.sensor_snapshot_shm << "\n";
   oss << "estimator_state_shm=" << cfg.ipc.estimator_state_shm << "\n";
   oss << "controller_command_shm=" << cfg.ipc.controller_command_shm << "\n";
+
+  oss << "[security]\n";
+  oss << "require_local_ipc_permissions=" << (cfg.security.require_local_ipc_permissions ? "true" : "false") << "\n";
+  oss << "require_loopback_sim_net=" << (cfg.security.require_loopback_sim_net ? "true" : "false") << "\n";
 
   oss << "[baro]\n";
   oss << "recovery_error_threshold=" << cfg.baro.recovery_error_threshold << "\n";

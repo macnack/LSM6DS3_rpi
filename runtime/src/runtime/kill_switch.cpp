@@ -54,6 +54,16 @@ void KillSwitchMonitor::start() {
     throw std::runtime_error("Failed to open kill switch value pin at '" + value_path +
                              "' (errno=" + std::to_string(errno) + ": " + std::strerror(errno) + ")");
   }
+
+  // Startup self-check: fail early if the GPIO cannot be read.
+  try {
+    (void)read_value();
+    tripped_ = false;
+    open_count_ = 0;
+  } catch (...) {
+    stop();
+    throw;
+  }
 #endif
 }
 
