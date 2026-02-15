@@ -152,7 +152,7 @@ def main() -> int:
             crc = finalize_crc(msg_without_crc[:-4])
             msg = msg_without_crc[:-4] + struct.pack("<I", crc)
             cmd_mb.write(msg)
-
+            print("[control] phase={phase}, duty={duty_values}, s0={s0}, s1={s1}, s2={s2}, s3={s3}")
             now_wall = time.monotonic()
             if print_period_s > 0.0 and now_wall >= next_print_t:
                 if last_sensor is None:
@@ -173,8 +173,8 @@ def main() -> int:
                         temp_c,
                     ) = last_sensor
                     imu_text = (
-                        f"ax={ax:+.3f} ay={ay:+.3f} az={az:+.3f} m/s^2 "
-                        f"gx={gx:+.3f} gy={gy:+.3f} gz={gz:+.3f} rad/s"
+                        f"ax={ax:+.3f} ay={ay:+.3f} az={az:+.3f} "
+                        f"gx={gx:+.3f} gy={gy:+.3f} gz={gz:+.3f} "
                         if imu_valid
                         else "imu=invalid"
                     )
