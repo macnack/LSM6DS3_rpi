@@ -2,17 +2,31 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import time
+from pathlib import Path
 
-from runtime.python.ipc_common import (
-    CONTROLLER_MSG_STRUCT,
-    ESTIMATOR_MSG_STRUCT,
-    MESSAGE_MAGIC,
-    MESSAGE_VERSION,
-    SENSOR_MSG_STRUCT,
-    ShmMailbox,
-    MailboxConfig,
-)
+try:
+    from runtime.python.ipc_common import (
+        CONTROLLER_MSG_STRUCT,
+        ESTIMATOR_MSG_STRUCT,
+        MESSAGE_MAGIC,
+        MESSAGE_VERSION,
+        SENSOR_MSG_STRUCT,
+        ShmMailbox,
+        MailboxConfig,
+    )
+except ModuleNotFoundError:
+    sys.path.append(str(Path(__file__).resolve().parents[1] / "runtime" / "python"))
+    from ipc_common import (
+        CONTROLLER_MSG_STRUCT,
+        ESTIMATOR_MSG_STRUCT,
+        MESSAGE_MAGIC,
+        MESSAGE_VERSION,
+        SENSOR_MSG_STRUCT,
+        ShmMailbox,
+        MailboxConfig,
+    )
 
 
 def dump_sensor(payload: bytes) -> None:

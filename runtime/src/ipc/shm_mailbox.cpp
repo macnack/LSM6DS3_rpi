@@ -89,10 +89,15 @@ void ShmRegion::open_region() {
 
   if (owner_) {
     if (::fchmod(fd_, 0600) != 0) {
-      const auto err = with_errno("fchmod(0600) failed for " + name_);
-      ::close(fd_);
-      fd_ = -1;
-      throw err;
+      const int chmod_err = errno;
+      // Some platforms (notably macOS POSIX SHM descriptors) reject fchmod with EINVAL.
+      // In that case keep going: shm_open(mode=0600) already applied the initial mode.
+      if (!(chmod_err == EINVAL && !using_file_fallback_)) {
+        const auto err = with_errno("fchmod(0600) failed for " + name_);
+        ::close(fd_);
+        fd_ = -1;
+        throw err;
+      }
     }
     if (::ftruncate(fd_, static_cast<off_t>(bytes_)) != 0) {
       const auto err = with_errno("ftruncate failed for " + name_);

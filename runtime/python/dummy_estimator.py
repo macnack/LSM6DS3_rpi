@@ -4,39 +4,32 @@ from __future__ import annotations
 import argparse
 import math
 import signal
-import struct
 import time
 try:
     from runtime.python.ipc_common import (
         ESTIMATOR_MSG_STRUCT,
-        ESTIMATOR_PAYLOAD_BYTES,
-        MESSAGE_MAGIC,
-        MESSAGE_VERSION,
         SENSOR_MSG_STRUCT,
         ShmMailbox,
         MailboxConfig,
-        finalize_crc,
+        decode_sensor_snapshot,
+        encode_estimator_state,
         monotonic_ns,
-        parse_float,
         parse_int,
         parse_simple_toml,
         parse_string,
     )
 except ModuleNotFoundError:
     from ipc_common import (
-    ESTIMATOR_MSG_STRUCT,
-    ESTIMATOR_PAYLOAD_BYTES,
-    MESSAGE_MAGIC,
-    MESSAGE_VERSION,
-    SENSOR_MSG_STRUCT,
-    ShmMailbox,
-    MailboxConfig,
-    finalize_crc,
-    monotonic_ns,
-    parse_float,
-    parse_int,
-    parse_simple_toml,
-    parse_string,
+        ESTIMATOR_MSG_STRUCT,
+        SENSOR_MSG_STRUCT,
+        ShmMailbox,
+        MailboxConfig,
+        decode_sensor_snapshot,
+        encode_estimator_state,
+        monotonic_ns,
+        parse_int,
+        parse_simple_toml,
+        parse_string,
     )
 
 
@@ -106,67 +99,33 @@ def main() -> int:
             payload = sensor_mb.try_read()
             now_ns = monotonic_ns()
             if payload is not None:
-                values = SENSOR_MSG_STRUCT.unpack(payload)
-                (
-                    magic,
-                    version,
-                    payload_bytes,
-                    sensor_seq,
-                    t_ns,
-                    imu_valid,
-                    baro_valid,
-                    ax,
-                    ay,
-                    az,
-                    gx,
-                    gy,
-                    gz,
-                    pressure_pa,
-                    temp_c,
-                    crc,
-                ) = values
-                _ = (sensor_seq, baro_valid, pressure_pa, temp_c)
-
-                if magic == MESSAGE_MAGIC and version == MESSAGE_VERSION and payload_bytes == 88 and imu_valid:
-                    if last_t and t_ns > last_t:
-                        dt = (t_ns - last_t) * 1e-9
+                sample = decode_sensor_snapshot(payload)
+                if sample is not None and sample.imu_valid:
+                    if last_t and sample.t_ns > last_t:
+                        dt = (sample.t_ns - last_t) * 1e-9
                     else:
                         dt = period_s
-                    last_t = t_ns
+                    last_t = sample.t_ns
 
-                    roll += gx * dt
-                    pitch += gy * dt
-                    yaw += gz * dt
+                    roll += sample.gx_rads * dt
+                    pitch += sample.gy_rads * dt
+                    yaw += sample.gz_rads * dt
 
-                    accel_roll = math.atan2(ay, az)
-                    accel_pitch = math.atan2(-ax, math.sqrt(ay * ay + az * az))
+                    accel_roll = math.atan2(sample.ay_mps2, sample.az_mps2)
+                    accel_pitch = math.atan2(-sample.ax_mps2, math.sqrt(sample.ay_mps2 * sample.ay_mps2 +
+                                                                        sample.az_mps2 * sample.az_mps2))
                     alpha = 0.03
                     roll = (1.0 - alpha) * roll + alpha * accel_roll
                     pitch = (1.0 - alpha) * pitch + alpha * accel_pitch
 
             q = quat_from_euler(roll, pitch, yaw)
             seq += 1
-            msg_without_crc = ESTIMATOR_MSG_STRUCT.pack(
-                MESSAGE_MAGIC,
-                MESSAGE_VERSION,
-                ESTIMATOR_PAYLOAD_BYTES,
-                seq,
-                now_ns,
-                1,
-                q[0],
-                q[1],
-                q[2],
-                q[3],
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0,
+            msg = encode_estimator_state(
+                seq=seq,
+                t_ns=now_ns,
+                valid=True,
+                q_body_to_ned=q,
             )
-            crc = finalize_crc(msg_without_crc[:-4])
-            msg = msg_without_crc[:-4] + struct.pack("<I", crc)
             est_mb.write(msg)
 
             time.sleep(period_s)
