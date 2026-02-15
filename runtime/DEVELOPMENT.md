@@ -79,6 +79,22 @@ If config is needed:
 
 Use this when you want a dedicated periodic thread (for example GPS, logger, custom comms).
 
+### Exact functions to edit
+
+In `runtime/src/runtime/runtime.cpp`, add your worker in these exact places:
+
+1. Declare the worker method in `class Runtime::Impl` private section:
+   - add `void <name>_worker();` next to existing worker methods.
+2. Implement `void Runtime::Impl::<name>_worker()` in the worker block (same area as `imu_worker`, `i2c_hub_worker`, `estimator_worker`).
+3. Register thread start in `start_workers()`:
+   - add `workers_.push_back(std::thread([this] { <name>_worker(); }));`
+4. Do not change `join_workers()` logic unless special behavior is needed:
+   - it already joins every thread in `workers_`.
+5. If worker publishes data, add fields to `SharedState` and lock around reads/writes.
+6. If worker exposes metrics, update:
+   - `RuntimeStats` in `runtime/include/runtime/common/types.hpp`
+   - status output in `maybe_write_status_file()`
+
 ### Step-by-step
 
 1. Add shared state needed by the worker in `SharedState` inside `runtime/src/runtime/runtime.cpp`.
