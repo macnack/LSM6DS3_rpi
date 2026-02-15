@@ -31,6 +31,22 @@ class MailboxConfig:
     retry_sleep_s: float = 0.05
 
 
+@dataclass
+class SensorSnapshot:
+    seq: int
+    t_ns: int
+    imu_valid: bool
+    baro_valid: bool
+    ax_mps2: float
+    ay_mps2: float
+    az_mps2: float
+    gx_rads: float
+    gy_rads: float
+    gz_rads: float
+    pressure_pa: float
+    temperature_c: float
+
+
 class ShmMailbox:
     def __init__(self, cfg: MailboxConfig, payload_size: int):
         self._cfg = cfg
@@ -184,3 +200,94 @@ def parse_string(text: str) -> str:
 
 def finalize_crc(payload_without_crc: bytes) -> int:
     return zlib.crc32(payload_without_crc) & 0xFFFFFFFF
+
+
+def decode_sensor_snapshot(payload: bytes, *, check_crc: bool = True) -> SensorSnapshot | None:
+    if len(payload) != SENSOR_MSG_STRUCT.size:
+        return None
+    values = SENSOR_MSG_STRUCT.unpack(payload)
+    (
+        magic,
+        version,
+        payload_bytes,
+        seq,
+        t_ns,
+        imu_valid,
+        baro_valid,
+        ax,
+        ay,
+        az,
+        gx,
+        gy,
+        gz,
+        pressure_pa,
+        temp_c,
+        crc,
+    ) = values
+    if magic != MESSAGE_MAGIC or version != MESSAGE_VERSION or payload_bytes != SENSOR_PAYLOAD_BYTES:
+        return None
+    if check_crc and crc != finalize_crc(payload[:-4]):
+        return None
+    return SensorSnapshot(
+        seq=seq,
+        t_ns=t_ns,
+        imu_valid=bool(imu_valid),
+        baro_valid=bool(baro_valid),
+        ax_mps2=ax,
+        ay_mps2=ay,
+        az_mps2=az,
+        gx_rads=gx,
+        gy_rads=gy,
+        gz_rads=gz,
+        pressure_pa=pressure_pa,
+        temperature_c=temp_c,
+    )
+
+
+def encode_controller_command(seq: int, t_ns: int, armed: bool, servo_norm: tuple[float, float, float, float]) -> bytes:
+    msg_without_crc = CONTROLLER_MSG_STRUCT.pack(
+        MESSAGE_MAGIC,
+        MESSAGE_VERSION,
+        CONTROLLER_PAYLOAD_BYTES,
+        seq,
+        t_ns,
+        1 if armed else 0,
+        servo_norm[0],
+        servo_norm[1],
+        servo_norm[2],
+        servo_norm[3],
+        0,
+    )
+    crc = finalize_crc(msg_without_crc[:-4])
+    return msg_without_crc[:-4] + struct.pack("<I", crc)
+
+
+def encode_estimator_state(
+    seq: int,
+    t_ns: int,
+    valid: bool,
+    q_body_to_ned: tuple[float, float, float, float],
+    vel_ned_mps: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    pos_ned_m: tuple[float, float, float] = (0.0, 0.0, 0.0),
+) -> bytes:
+    msg_without_crc = ESTIMATOR_MSG_STRUCT.pack(
+        MESSAGE_MAGIC,
+        MESSAGE_VERSION,
+        ESTIMATOR_PAYLOAD_BYTES,
+        seq,
+        t_ns,
+        1 if valid else 0,
+        q_body_to_ned[0],
+        q_body_to_ned[1],
+        q_body_to_ned[2],
+        q_body_to_ned[3],
+        vel_ned_mps[0],
+        vel_ned_mps[1],
+        vel_ned_mps[2],
+        pos_ned_m[0],
+        pos_ned_m[1],
+        pos_ned_m[2],
+        0,
+    )
+    crc = finalize_crc(msg_without_crc[:-4])
+    return msg_without_crc[:-4] + struct.pack("<I", crc)

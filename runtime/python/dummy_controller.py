@@ -4,19 +4,16 @@ from __future__ import annotations
 import argparse
 import math
 import signal
-import struct
 import time
 try:
     from runtime.python.ipc_common import (
         CONTROLLER_MSG_STRUCT,
-        CONTROLLER_PAYLOAD_BYTES,
-        MESSAGE_MAGIC,
-        MESSAGE_VERSION,
         SENSOR_MSG_STRUCT,
-        SENSOR_PAYLOAD_BYTES,
+        SensorSnapshot,
         ShmMailbox,
         MailboxConfig,
-        finalize_crc,
+        decode_sensor_snapshot,
+        encode_controller_command,
         monotonic_ns,
         parse_int,
         parse_simple_toml,
@@ -25,14 +22,12 @@ try:
 except ModuleNotFoundError:
     from ipc_common import (
         CONTROLLER_MSG_STRUCT,
-        CONTROLLER_PAYLOAD_BYTES,
-        MESSAGE_MAGIC,
-        MESSAGE_VERSION,
         SENSOR_MSG_STRUCT,
-        SENSOR_PAYLOAD_BYTES,
+        SensorSnapshot,
         ShmMailbox,
         MailboxConfig,
-        finalize_crc,
+        decode_sensor_snapshot,
+        encode_controller_command,
         monotonic_ns,
         parse_int,
         parse_simple_toml,
@@ -100,7 +95,7 @@ def main() -> int:
     seq = 0
     start = time.monotonic()
     next_print_t = start
-    last_sensor: tuple[int, int, int, float, float, float, float, float, float, int, float, float] | None = None
+    last_sensor: SensorSnapshot | None = None
 
     try:
         while running:
@@ -109,79 +104,39 @@ def main() -> int:
 
             payload = sensor_mb.try_read()
             if payload is not None:
-                values = SENSOR_MSG_STRUCT.unpack(payload)
-                (
-                    magic,
-                    version,
-                    payload_bytes,
-                    sensor_seq,
-                    t_ns,
-                    imu_valid,
-                    baro_valid,
-                    ax,
-                    ay,
-                    az,
-                    gx,
-                    gy,
-                    gz,
-                    pressure_pa,
-                    temp_c,
-                    _crc,
-                ) = values
-                if magic == MESSAGE_MAGIC and version == MESSAGE_VERSION and payload_bytes == SENSOR_PAYLOAD_BYTES:
-                    last_sensor = (sensor_seq, t_ns, imu_valid, ax, ay, az, gx, gy, gz, baro_valid, pressure_pa, temp_c)
+                sample = decode_sensor_snapshot(payload)
+                if sample is not None:
+                    last_sensor = sample
 
             phase = 2.0 * math.pi * args.sine_hz * (time.monotonic() - start)
             duty_values = [duty_center + duty_amplitude * math.sin(phase + p) for p in phase_offsets]
             s0, s1, s2, s3 = [clamp((2.0 * duty) - 1.0, -1.0, 1.0) for duty in duty_values]
             seq += 1
             now_ns = monotonic_ns()
-            msg_without_crc = CONTROLLER_MSG_STRUCT.pack(
-                MESSAGE_MAGIC,
-                MESSAGE_VERSION,
-                CONTROLLER_PAYLOAD_BYTES,
-                seq,
-                now_ns,
-                1,
-                s0,
-                s1,
-                s2,
-                s3,
-                0,
+            msg = encode_controller_command(
+                seq=seq,
+                t_ns=now_ns,
+                armed=True,
+                servo_norm=(s0, s1, s2, s3),
             )
-            crc = finalize_crc(msg_without_crc[:-4])
-            msg = msg_without_crc[:-4] + struct.pack("<I", crc)
             cmd_mb.write(msg)
-            print("[control] phase={phase}, duty={duty_values}, s0={s0}, s1={s1}, s2={s2}, s3={s3}")
             now_wall = time.monotonic()
             if print_period_s > 0.0 and now_wall >= next_print_t:
                 if last_sensor is None:
                     print("[sensor] waiting for sensor snapshots...")
                 else:
-                    (
-                        sensor_seq,
-                        t_ns,
-                        imu_valid,
-                        ax,
-                        ay,
-                        az,
-                        gx,
-                        gy,
-                        gz,
-                        baro_valid,
-                        pressure_pa,
-                        temp_c,
-                    ) = last_sensor
                     imu_text = (
-                        f"ax={ax:+.3f} ay={ay:+.3f} az={az:+.3f} "
-                        f"gx={gx:+.3f} gy={gy:+.3f} gz={gz:+.3f} "
-                        if imu_valid
+                        f"ax={last_sensor.ax_mps2:+.3f} ay={last_sensor.ay_mps2:+.3f} az={last_sensor.az_mps2:+.3f} "
+                        f"gx={last_sensor.gx_rads:+.3f} gy={last_sensor.gy_rads:+.3f} gz={last_sensor.gz_rads:+.3f} "
+                        if last_sensor.imu_valid
                         else "imu=invalid"
                     )
                     baro_text = (
-                        f"p={pressure_pa:.1f} Pa temp={temp_c:.2f} C" if baro_valid else "baro=invalid"
+                        f"p={last_sensor.pressure_pa:.1f} Pa temp={last_sensor.temperature_c:.2f} C"
+                        if last_sensor.baro_valid
+                        else "baro=invalid"
                     )
-                    print(f"[sensor] seq={sensor_seq} t_ns={t_ns} {imu_text} {baro_text}")
+                    print(f"[sensor] seq={last_sensor.seq} t_ns={last_sensor.t_ns} {imu_text} {baro_text}")
                 next_print_t = now_wall + print_period_s
 
             time.sleep(period_s)
