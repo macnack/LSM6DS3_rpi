@@ -36,6 +36,8 @@ struct SimNetStats {
   uint64_t actuator_frames = 0;
   uint64_t actuator_send_errors = 0;
   uint64_t actuator_clients = 0;
+  uint64_t actuator_disconnects = 0;
+  bool actuator_client_connected = false;
 };
 
 class SimNetLink {
@@ -49,6 +51,7 @@ class SimNetLink {
 
   bool latest_sensor(NetSensorSample& out) const;
   void publish_actuator(const ControlCommand& cmd, uint64_t now_ns);
+  bool actuator_client_connected() const;
 
   SimNetStats stats_snapshot() const;
 
@@ -58,7 +61,7 @@ class SimNetLink {
   bool read_exact(int fd, std::vector<uint8_t>& buf, std::size_t bytes);
 
   void ensure_accept_client();
-  void close_client();
+  void close_client(bool count_disconnect = true);
 
   SimNetSection cfg_;
   std::atomic<bool> stop_{false};

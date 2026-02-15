@@ -73,6 +73,7 @@ enum class FailsafeReason : uint32_t {
   IoErrorLatch = 3,
   KillSwitch = 4,
   InvalidEstimator = 5,
+  LinkDown = 6,
 };
 
 struct RuntimeStats {
@@ -89,6 +90,13 @@ struct RuntimeStats {
   uint64_t external_controller_reject_count = 0;
 
   uint64_t failsafe_activation_count = 0;
+  uint64_t failsafe_enter_count = 0;
+  uint64_t failsafe_exit_count = 0;
+  uint64_t failsafe_cause_cmd_stale_count = 0;
+  uint64_t failsafe_cause_link_down_count = 0;
+  uint64_t failsafe_cause_imu_stale_count = 0;
+  uint64_t failsafe_cause_killswitch_count = 0;
+  uint64_t failsafe_cause_actuator_io_latch_count = 0;
 
   uint64_t control_deadline_miss_count = 0;
   uint64_t actuator_deadline_miss_count = 0;
@@ -130,6 +138,8 @@ struct RuntimeStats {
   uint64_t sim_net_actuator_frames = 0;
   uint64_t sim_net_actuator_send_errors = 0;
   uint64_t sim_net_actuator_clients = 0;
+  uint64_t sim_net_actuator_disconnects = 0;
+  bool sim_net_actuator_client_connected = false;
 
   bool degraded_mode_active = false;
   uint32_t last_failsafe_reason = static_cast<uint32_t>(FailsafeReason::None);

@@ -137,7 +137,9 @@ Runtime status file now includes:
 - actuator command age (`last`, `max`)
 - `i2c_recovery_count`
 - kill switch state and trip count
-- existing python accept/reject and failsafe counters
+- external worker accept/reject counters
+- failsafe diagnostics (`failsafe_activation_count`, enter/exit events, per-cause counts)
+- sim_net actuator link diagnostics (`sim_net_actuator_disconnects`, `sim_net_actuator_client_connected`)
 
 Example configs:
 
@@ -254,6 +256,9 @@ CTest targets:
 
 - `runtime_unit_fallback`
 - `runtime_unit_ipc`
+- `runtime_unit_external_time_validation`
+- `runtime_unit_runtime_failsafe_causes`
+- `runtime_unit_sim_net_link`
 - `runtime_smoke_python_dev`
 
 ## Notes

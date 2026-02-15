@@ -107,10 +107,7 @@ void SimNetLink::stop() noexcept {
   if (sensor_thread_.joinable()) {
     sensor_thread_.join();
   }
-  if (client_fd_ >= 0) {
-    ::close(client_fd_);
-    client_fd_ = -1;
-  }
+  close_client(false);
   if (listen_fd_ >= 0) {
     ::close(listen_fd_);
     listen_fd_ = -1;
@@ -285,13 +282,19 @@ void SimNetLink::ensure_accept_client() {
     client_fd_ = fd;
     std::lock_guard<std::mutex> lock(stats_mutex_);
     ++stats_.actuator_clients;
+    stats_.actuator_client_connected = true;
   }
 }
 
-void SimNetLink::close_client() {
+void SimNetLink::close_client(bool count_disconnect) {
   if (client_fd_ >= 0) {
     ::close(client_fd_);
     client_fd_ = -1;
+    std::lock_guard<std::mutex> lock(stats_mutex_);
+    if (count_disconnect) {
+      ++stats_.actuator_disconnects;
+    }
+    stats_.actuator_client_connected = false;
   }
 }
 
@@ -340,7 +343,7 @@ void SimNetLink::publish_actuator(const ControlCommand& cmd, uint64_t now_ns) {
       std::lock_guard<std::mutex> lock(stats_mutex_);
       ++stats_.actuator_send_errors;
     }
-    close_client();
+    close_client(true);
     return;
   }
 
@@ -348,6 +351,11 @@ void SimNetLink::publish_actuator(const ControlCommand& cmd, uint64_t now_ns) {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     ++stats_.actuator_frames;
   }
+}
+
+bool SimNetLink::actuator_client_connected() const {
+  std::lock_guard<std::mutex> lock(stats_mutex_);
+  return stats_.actuator_client_connected;
 }
 
 SimNetStats SimNetLink::stats_snapshot() const {

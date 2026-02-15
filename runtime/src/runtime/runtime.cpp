@@ -8,6 +8,7 @@
 #include "runtime/runtime/controller.hpp"
 #include "runtime/runtime/estimator.hpp"
 #include "runtime/runtime/external_time_validation.hpp"
+#include "runtime/runtime/failsafe_diagnostics.hpp"
 #include "runtime/runtime/fallback.hpp"
 #include "runtime/runtime/kill_switch.hpp"
 #include "runtime/runtime/rt_thread.hpp"
@@ -254,6 +255,8 @@ const char* failsafe_reason_name(FailsafeReason reason) {
       return "kill_switch";
     case FailsafeReason::InvalidEstimator:
       return "invalid_estimator";
+    case FailsafeReason::LinkDown:
+      return "link_down";
   }
   return "unknown";
 }
@@ -676,6 +679,8 @@ class Runtime::Impl {
             s.sim_net_actuator_frames = sn.actuator_frames;
             s.sim_net_actuator_send_errors = sn.actuator_send_errors;
             s.sim_net_actuator_clients = sn.actuator_clients;
+            s.sim_net_actuator_disconnects = sn.actuator_disconnects;
+            s.sim_net_actuator_client_connected = sn.actuator_client_connected;
           });
         }
       }
@@ -719,6 +724,10 @@ class Runtime::Impl {
 
     uint32_t consecutive_io_errors = 0;
     bool failsafe_latched = false;
+    bool prev_failsafe_override = false;
+    LinkDownHysteresisState link_down_state{};
+    const uint64_t link_down_hold_ns = ns_from_ms(200);
+    const uint64_t link_up_hold_ns = ns_from_ms(500);
 
     while (!stop_requested_.load(std::memory_order_relaxed)) {
       const uint64_t now_ns = monotonic_time_ns();
@@ -750,24 +759,20 @@ class Runtime::Impl {
           (!imu.valid) ||
           (now_ns > imu.t_ns && (now_ns - imu.t_ns) > ns_from_ms(cfg_.timeouts.imu_stale_ms));
       const bool kill_active = kill_switch_active_.load(std::memory_order_relaxed);
-      bool failsafe_override = failsafe_latched || cmd_timed_out || imu_stale || kill_active;
-      FailsafeReason failsafe_reason = FailsafeReason::None;
-      if (failsafe_latched) {
-        failsafe_reason = FailsafeReason::IoErrorLatch;
-      } else if (kill_active) {
-        failsafe_reason = FailsafeReason::KillSwitch;
-      } else if (imu_stale) {
-        failsafe_reason = FailsafeReason::ImuStale;
-      } else if (cmd_timed_out) {
-        failsafe_reason = FailsafeReason::CommandTimeout;
+      bool raw_link_down = false;
+      if (cfg_.sim_net.enabled && sim_net_link_) {
+        raw_link_down = !sim_net_link_->actuator_client_connected();
       }
-      if (failsafe_override) {
-        const auto failsafe_reason_u32 = static_cast<uint32_t>(failsafe_reason);
-        bump_stat([failsafe_reason_u32](RuntimeStats& s) {
-          ++s.failsafe_activation_count;
-          s.last_failsafe_reason = failsafe_reason_u32;
-        });
-      }
+      const bool link_down = cfg_.sim_net.enabled && sim_net_link_ &&
+                             update_link_down_hysteresis(raw_link_down, now_ns, link_down_hold_ns,
+                                                         link_up_hold_ns, link_down_state);
+      const bool failsafe_override = failsafe_latched || cmd_timed_out || imu_stale || kill_active || link_down;
+      const ActuatorFailsafeCause failsafe_cause =
+          select_actuator_failsafe_cause(failsafe_latched, kill_active, imu_stale, link_down, cmd_timed_out);
+      bump_stat([prev_failsafe_override, failsafe_override, failsafe_cause](RuntimeStats& s) {
+        account_failsafe_transition(prev_failsafe_override, failsafe_override, failsafe_cause, s);
+      });
+      prev_failsafe_override = failsafe_override;
 
       if (!has_cmd || cmd_timed_out) {
         bump_stat([](RuntimeStats& s) {
@@ -1093,6 +1098,13 @@ class Runtime::Impl {
     out << "external_controller_accept_count=" << s.external_controller_accept_count << "\n";
     out << "external_controller_reject_count=" << s.external_controller_reject_count << "\n";
     out << "failsafe_activation_count=" << s.failsafe_activation_count << "\n";
+    out << "failsafe_enter_count=" << s.failsafe_enter_count << "\n";
+    out << "failsafe_exit_count=" << s.failsafe_exit_count << "\n";
+    out << "failsafe_cause_cmd_stale_count=" << s.failsafe_cause_cmd_stale_count << "\n";
+    out << "failsafe_cause_link_down_count=" << s.failsafe_cause_link_down_count << "\n";
+    out << "failsafe_cause_imu_stale_count=" << s.failsafe_cause_imu_stale_count << "\n";
+    out << "failsafe_cause_killswitch_count=" << s.failsafe_cause_killswitch_count << "\n";
+    out << "failsafe_cause_actuator_io_latch_count=" << s.failsafe_cause_actuator_io_latch_count << "\n";
     out << "last_failsafe_reason=" << s.last_failsafe_reason << "\n";
     out << "last_failsafe_reason_name="
         << failsafe_reason_name(static_cast<FailsafeReason>(s.last_failsafe_reason)) << "\n";
@@ -1135,6 +1147,9 @@ class Runtime::Impl {
     out << "sim_net_actuator_frames=" << s.sim_net_actuator_frames << "\n";
     out << "sim_net_actuator_send_errors=" << s.sim_net_actuator_send_errors << "\n";
     out << "sim_net_actuator_clients=" << s.sim_net_actuator_clients << "\n";
+    out << "sim_net_actuator_disconnects=" << s.sim_net_actuator_disconnects << "\n";
+    out << "sim_net_actuator_client_connected="
+        << (s.sim_net_actuator_client_connected ? "true" : "false") << "\n";
   }
 
   template <typename Fn>

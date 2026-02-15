@@ -23,6 +23,13 @@ COLOR = {
 
 WARNING_KEYS = {
     "failsafe_activation_count",
+    "failsafe_enter_count",
+    "failsafe_exit_count",
+    "failsafe_cause_cmd_stale_count",
+    "failsafe_cause_link_down_count",
+    "failsafe_cause_imu_stale_count",
+    "failsafe_cause_killswitch_count",
+    "failsafe_cause_actuator_io_latch_count",
     "killswitch_active",
     "degraded_mode_active",
 }
@@ -48,11 +55,36 @@ WORKER_KEYS = {
     for prefix in (primary, legacy)
     for suffix in ("accept_count", "reject_count")
 }
-SIM_NET_ROWS = (
-    ("Sensor", "sim_net_sensor_frames", "sim_net_sensor_crc_fail", "sim_net_sensor_disconnects"),
-    ("Actuator", "sim_net_actuator_frames", "sim_net_actuator_send_errors", "sim_net_actuator_clients"),
+FAILSAFE_ROWS = (
+    ("Active Ticks", "failsafe_activation_count"),
+    ("Enter Events", "failsafe_enter_count"),
+    ("Exit Events", "failsafe_exit_count"),
+    ("Cause: cmd stale", "failsafe_cause_cmd_stale_count"),
+    ("Cause: link down", "failsafe_cause_link_down_count"),
+    ("Cause: imu stale", "failsafe_cause_imu_stale_count"),
+    ("Cause: killswitch", "failsafe_cause_killswitch_count"),
+    ("Cause: io latch", "failsafe_cause_actuator_io_latch_count"),
 )
-SIM_NET_KEYS = {k for row in SIM_NET_ROWS for k in row[1:]}
+FAILSAFE_KEYS = {key for _, key in FAILSAFE_ROWS}
+SIM_NET_ROWS = (
+    (
+        "Sensor",
+        "sim_net_sensor_frames",
+        "sim_net_sensor_crc_fail",
+        "sim_net_sensor_disconnects",
+        None,
+        None,
+    ),
+    (
+        "Actuator",
+        "sim_net_actuator_frames",
+        "sim_net_actuator_send_errors",
+        "sim_net_actuator_disconnects",
+        "sim_net_actuator_clients",
+        "sim_net_actuator_client_connected",
+    ),
+)
+SIM_NET_KEYS = {k for row in SIM_NET_ROWS for k in row[1:] if k is not None}
 ENABLE_COLOR = True
 
 
@@ -64,6 +96,8 @@ def paint(text: str, color: str) -> str:
 
 def classify(key: str, value: str) -> str:
     lower = key.lower()
+    if lower == "sim_net_actuator_client_connected":
+        return "green" if value.strip().lower() in ("true", "1", "yes") else "yellow"
     if any(lower.endswith(suffix) for suffix in CRITICAL_SUFFIXES):
         try:
             return "red" if int(value) > 0 else "green"
@@ -191,6 +225,29 @@ def print_worker_table(status: dict[str, str]) -> None:
         print(row)
 
 
+def print_failsafe_table(status: dict[str, str]) -> None:
+    header = ("Counter", "Value")
+    widths = {"Counter": 32, "Value": 14}
+    print("\nFailsafe diagnostics:")
+    print(format_table_header(header, widths))
+    print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
+    for label, key in FAILSAFE_ROWS:
+        value = status.get(key, "—")
+        color = classify(key, value if value != "—" else "0")
+        if value.isdigit():
+            value_fmt = f"{int(value):{widths['Value']},d}"
+        else:
+            value_fmt = value.rjust(widths["Value"])
+        print(
+            " | ".join(
+                [
+                    paint(f"{label:>{widths['Counter']}}", "white"),
+                    paint(value_fmt, color),
+                ]
+            )
+        )
+
+
 def print_jitter_table(status: dict[str, str]) -> None:
     header = ("Component", "P50", "P95", "P99", "Max")
     widths = {"Component": 10, "P50": 12, "P95": 12, "P99": 12, "Max": 12}
@@ -213,27 +270,46 @@ def print_jitter_table(status: dict[str, str]) -> None:
 
 
 def print_sim_net_table(status: dict[str, str]) -> None:
-    header = ("Flow", "Frames", "Errors/CRC", "Disconnects/Clients")
-    widths = {"Flow": 10, "Frames": 14, "Errors/CRC": 16, "Disconnects/Clients": 20}
+    header = ("Flow", "Frames", "Errors/CRC", "Disconnects", "Clients", "Connected")
+    widths = {
+        "Flow": 10,
+        "Frames": 14,
+        "Errors/CRC": 16,
+        "Disconnects": 14,
+        "Clients": 12,
+        "Connected": 11,
+    }
     print("\nSim net (TCP bridge):")
     print(format_table_header(header, widths))
     print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
-    for label, frames_key, error_key, extra_key in SIM_NET_ROWS:
+    for label, frames_key, error_key, disconnects_key, clients_key, connected_key in SIM_NET_ROWS:
         frames = status.get(frames_key, "—")
         errors = status.get(error_key, "—")
-        extra = status.get(extra_key, "—")
+        disconnects = status.get(disconnects_key, "—")
+        clients = status.get(clients_key, "—") if clients_key is not None else "—"
+        connected = status.get(connected_key, "—") if connected_key is not None else "—"
         frames_fmt = f"{int(frames):{widths['Frames']},d}" if frames.isdigit() else frames.rjust(widths["Frames"])
         errors_fmt = f"{int(errors):{widths['Errors/CRC']},d}" if errors.isdigit() else errors.rjust(widths["Errors/CRC"])
-        extra_fmt = f"{int(extra):{widths['Disconnects/Clients']},d}" if extra.isdigit() else extra.rjust(widths["Disconnects/Clients"])
+        disconnects_fmt = (
+            f"{int(disconnects):{widths['Disconnects']},d}"
+            if disconnects.isdigit()
+            else disconnects.rjust(widths["Disconnects"])
+        )
+        clients_fmt = f"{int(clients):{widths['Clients']},d}" if clients.isdigit() else clients.rjust(widths["Clients"])
+        connected_fmt = connected.rjust(widths["Connected"])
         frames_color = classify(frames_key, frames if frames != "—" else "0")
         errors_color = classify(error_key, errors if errors != "—" else "0")
-        extra_color = classify(extra_key, extra if extra != "—" else "0")
+        disconnects_color = classify(disconnects_key, disconnects if disconnects != "—" else "0")
+        clients_color = classify(clients_key, clients if clients != "—" else "0") if clients_key else "cyan"
+        connected_color = classify(connected_key, connected) if connected_key else "cyan"
         row = " | ".join(
             [
                 paint(f"{label:>{widths['Flow']}}", "white"),
                 paint(frames_fmt, frames_color),
                 paint(errors_fmt, errors_color),
-                paint(extra_fmt, extra_color),
+                paint(disconnects_fmt, disconnects_color),
+                paint(clients_fmt, clients_color),
+                paint(connected_fmt, connected_color),
             ]
         )
         print(row)
@@ -313,7 +389,12 @@ def print_link_health(
     sensor_crc = parse_int(status, "sim_net_sensor_crc_fail")
     sensor_disconnects = parse_int(status, "sim_net_sensor_disconnects")
     actuator_errors = parse_int(status, "sim_net_actuator_send_errors")
+    actuator_disconnects = parse_int(status, "sim_net_actuator_disconnects")
     actuator_clients = parse_int(status, "sim_net_actuator_clients")
+    actuator_connected_raw = status.get("sim_net_actuator_client_connected")
+    actuator_connected: bool | None = None
+    if actuator_connected_raw is not None:
+        actuator_connected = actuator_connected_raw.strip().lower() in ("true", "1", "yes")
 
     sensor_rate: float | None = None
     actuator_rate: float | None = None
@@ -356,7 +437,7 @@ def print_link_health(
 
     sensor_health_color, sensor_health_text = health_from_age(sensor_age, warn_sec, stall_sec)
     actuator_health_color, actuator_health_text = health_from_age(actuator_age, warn_sec, stall_sec)
-    if actuator_clients is not None and actuator_clients <= 0:
+    if actuator_connected is False:
         actuator_health_color = "yellow"
         actuator_health_text = "NO_CLIENT"
 
@@ -401,7 +482,9 @@ def print_link_health(
 
     actuator_notes = (
         f"send_err={actuator_errors if actuator_errors is not None else 'n/a'} "
-        f"clients={actuator_clients if actuator_clients is not None else 'n/a'}"
+        f"disconnects={actuator_disconnects if actuator_disconnects is not None else 'n/a'} "
+        f"clients={actuator_clients if actuator_clients is not None else 'n/a'} "
+        f"connected={actuator_connected_raw if actuator_connected_raw is not None else 'n/a'}"
     )
     actuator_row = " | ".join(
         [
@@ -422,9 +505,10 @@ def print_link_health(
 def print_report(path: Path) -> None:
     status = parse_status(path)
     tick_keys = {k for k in status if k.endswith("_ticks")}
-    ignore = JITTER_KEYS | DEADLINE_KEYS | WORKER_KEYS | tick_keys | SIM_NET_KEYS
+    ignore = JITTER_KEYS | DEADLINE_KEYS | WORKER_KEYS | FAILSAFE_KEYS | tick_keys | SIM_NET_KEYS
     print_kv(status, ignore)
     print_worker_table(status)
+    print_failsafe_table(status)
     print_deadline_tick_table(status)
     print_jitter_table(status)
     if status.get("sim_mode", "").lower() == "true":

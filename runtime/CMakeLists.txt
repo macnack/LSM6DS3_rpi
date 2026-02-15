@@ -17,6 +17,7 @@ add_library(runtime_core STATIC
   src/runtime/sensors.cpp
   src/runtime/sim_net.cpp
   src/runtime/external_time_validation.cpp
+  src/runtime/failsafe_diagnostics.cpp
   src/runtime/kill_switch.cpp
   src/runtime/rt_thread.cpp
   src/runtime/runtime.cpp
@@ -83,6 +84,16 @@ if(BUILD_TESTING)
   target_link_libraries(runtime_unit_external_time_validation PRIVATE runtime_core)
   target_compile_options(runtime_unit_external_time_validation PRIVATE -Wall -Wextra -Wpedantic)
   add_test(NAME runtime_unit_external_time_validation COMMAND runtime_unit_external_time_validation)
+
+  add_executable(runtime_unit_runtime_failsafe_causes tests/test_runtime_failsafe_causes.cpp)
+  target_link_libraries(runtime_unit_runtime_failsafe_causes PRIVATE runtime_core)
+  target_compile_options(runtime_unit_runtime_failsafe_causes PRIVATE -Wall -Wextra -Wpedantic)
+  add_test(NAME runtime_unit_runtime_failsafe_causes COMMAND runtime_unit_runtime_failsafe_causes)
+
+  add_executable(runtime_unit_sim_net_link tests/test_sim_net_link.cpp)
+  target_link_libraries(runtime_unit_sim_net_link PRIVATE runtime_core)
+  target_compile_options(runtime_unit_sim_net_link PRIVATE -Wall -Wextra -Wpedantic)
+  add_test(NAME runtime_unit_sim_net_link COMMAND runtime_unit_sim_net_link)
 
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
   configure_file(tests/smoke_rt_core.toml.in ${CMAKE_CURRENT_BINARY_DIR}/smoke_rt_core.toml @ONLY)
