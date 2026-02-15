@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"\"\"\"Dump rt_status.txt with colors plus ready-to-read jitter/tick tables.\"\""
+"""Dump rt_status.txt with colors plus ready-to-read jitter/tick tables."""
 
 from __future__ import annotations
 
 import argparse
+import base64
+import json
 import os
 import sys
 import time
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -85,6 +88,53 @@ SIM_NET_ROWS = (
     ),
 )
 SIM_NET_KEYS = {k for row in SIM_NET_ROWS for k in row[1:] if k is not None}
+SHARE_SCHEMA_VERSION = 1
+SHARE_TOKEN_PREFIX = f"rtshare{SHARE_SCHEMA_VERSION}_"
+SHARE_PROTOCOL_PREFIX = "rtshare://"
+SHARE_METRIC_KEYS = (
+    "sim_mode",
+    "degraded_mode_active",
+    "killswitch_active",
+    "last_failsafe_reason_name",
+    "failsafe_activation_count",
+    "failsafe_enter_count",
+    "failsafe_exit_count",
+    "control_deadline_miss_count",
+    "actuator_deadline_miss_count",
+    "imu_deadline_miss_count",
+    "baro_deadline_miss_count",
+    "i2c_deadline_miss_count",
+    "control_jitter_p95_ns",
+    "control_jitter_max_ns",
+    "actuator_jitter_p95_ns",
+    "actuator_jitter_max_ns",
+    "sim_net_sensor_disconnects",
+    "sim_net_actuator_disconnects",
+    "sim_net_actuator_client_connected",
+)
+SHARE_PRIMARY_COUNTERS = (
+    "failsafe_enter_count",
+    "control_deadline_miss_count",
+    "actuator_deadline_miss_count",
+    "imu_deadline_miss_count",
+    "baro_deadline_miss_count",
+    "i2c_deadline_miss_count",
+    "external_estimator_reject_count",
+    "external_controller_reject_count",
+)
+SHARE_SUMMARY_ROWS = (
+    ("Sim mode", "sim_mode"),
+    ("Health", "health"),
+    ("Failsafe enters", "failsafe_enter_count"),
+    ("Last failsafe", "last_failsafe_reason_name"),
+    ("Control miss", "control_deadline_miss_count"),
+    ("Actuator miss", "actuator_deadline_miss_count"),
+    ("Estimator reject", "external_estimator_reject_count"),
+    ("Controller reject", "external_controller_reject_count"),
+    ("Control jitter p95", "control_jitter_p95_ns"),
+    ("Control jitter max", "control_jitter_max_ns"),
+)
+DEFAULT_EVENT_LOG_PATH = Path("/tmp/rt_status_report_events.jsonl")
 ENABLE_COLOR = True
 
 
@@ -335,6 +385,167 @@ def parse_int(status: dict[str, str], key: str) -> int | None:
         return None
 
 
+def resolve_counter(status: dict[str, str], primary: str, legacy: str) -> str:
+    if primary in status:
+        return status[primary]
+    return status.get(legacy, "0")
+
+
+def share_health(status: dict[str, str]) -> str:
+    if status.get("killswitch_active", "false").strip().lower() not in ("false", "0", "no"):
+        return "red"
+    if status.get("degraded_mode_active", "false").strip().lower() not in ("false", "0", "no"):
+        return "yellow"
+    if status.get("last_failsafe_reason_name", "none").strip().lower() != "none":
+        return "yellow"
+    for key in SHARE_PRIMARY_COUNTERS:
+        value = parse_int(status, key)
+        if value is not None and value > 0:
+            return "yellow"
+    return "green"
+
+
+def build_share_snapshot(status: dict[str, str], source_path: Path) -> dict[str, object]:
+    payload: dict[str, str] = {key: status.get(key, "n/a") for key in SHARE_METRIC_KEYS}
+    payload["external_estimator_reject_count"] = resolve_counter(
+        status,
+        "external_estimator_reject_count",
+        "python_estimator_reject_count",
+    )
+    payload["external_controller_reject_count"] = resolve_counter(
+        status,
+        "external_controller_reject_count",
+        "python_controller_reject_count",
+    )
+    return {
+        "v": SHARE_SCHEMA_VERSION,
+        "created_unix": int(time.time()),
+        "source": source_path.name,
+        "health": share_health(payload),
+        "metrics": payload,
+    }
+
+
+def _urlsafe_b64_decode(raw: str) -> bytes:
+    padding = "=" * ((4 - len(raw) % 4) % 4)
+    return base64.urlsafe_b64decode(raw + padding)
+
+
+def encode_share_token(snapshot: dict[str, object]) -> str:
+    payload = json.dumps(snapshot, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    compressed = zlib.compress(payload, level=9)
+    token = base64.urlsafe_b64encode(compressed).decode("ascii").rstrip("=")
+    return f"{SHARE_TOKEN_PREFIX}{token}"
+
+
+def decode_share_token(raw_token: str) -> dict[str, object]:
+    token = raw_token.strip()
+    if token.startswith(SHARE_PROTOCOL_PREFIX):
+        token = token[len(SHARE_PROTOCOL_PREFIX) :]
+    if token.startswith(SHARE_TOKEN_PREFIX):
+        token = token[len(SHARE_TOKEN_PREFIX) :]
+    if not token:
+        raise ValueError("Share token is empty")
+    try:
+        compressed = _urlsafe_b64_decode(token)
+        payload = zlib.decompress(compressed)
+        data = json.loads(payload.decode("utf-8"))
+    except (ValueError, zlib.error, json.JSONDecodeError) as exc:
+        raise ValueError("Share token is invalid") from exc
+    if not isinstance(data, dict):
+        raise ValueError("Share token payload is invalid")
+    if data.get("v") != SHARE_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported share token version: {data.get('v')!r}")
+    metrics = data.get("metrics")
+    if not isinstance(metrics, dict):
+        raise ValueError("Share token payload is missing metrics")
+    return data
+
+
+def parse_event_log_path(raw_path: str) -> Path:
+    raw = raw_path.strip()
+    if not raw:
+        return DEFAULT_EVENT_LOG_PATH
+    return Path(raw)
+
+
+def log_growth_event(event: str, fields: dict[str, str | int]) -> None:
+    sink = parse_event_log_path(os.environ.get("RT_STATUS_REPORT_EVENT_LOG", str(DEFAULT_EVENT_LOG_PATH)))
+    record: dict[str, str | int] = {"event": event, "ts_unix": int(time.time())}
+    record.update(fields)
+    try:
+        sink.parent.mkdir(parents=True, exist_ok=True)
+        with sink.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, separators=(",", ":"), sort_keys=True) + "\n")
+    except OSError:
+        # Event logging should never break runtime diagnostics output.
+        return
+
+
+def share_health_color(health: str) -> str:
+    if health == "red":
+        return "red"
+    if health == "yellow":
+        return "yellow"
+    return "green"
+
+
+def print_share_snapshot(snapshot: dict[str, object]) -> None:
+    metrics = snapshot.get("metrics")
+    if not isinstance(metrics, dict):
+        raise SystemExit("Share snapshot is missing metrics")
+
+    created_unix = snapshot.get("created_unix")
+    created_at = "unknown"
+    if isinstance(created_unix, int):
+        created_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(created_unix))
+
+    source = snapshot.get("source", "unknown")
+    health = str(snapshot.get("health", "unknown")).lower()
+    print(paint("Shared runtime snapshot", "white"))
+    print(f"source: {source}")
+    print(f"created: {created_at}")
+    print(f"health: {paint(health.upper(), share_health_color(health))}")
+
+    header = ("Metric", "Value")
+    widths = {"Metric": 24, "Value": 20}
+    print("")
+    print(format_table_header(header, widths))
+    print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
+    for label, key in SHARE_SUMMARY_ROWS:
+        raw = str(metrics.get(key, "n/a")) if key != "health" else health
+        value_color = share_health_color(raw) if key == "health" else classify(key, raw)
+        row = " | ".join(
+            [
+                paint(f"{label:>{widths['Metric']}}", "white"),
+                paint(f"{raw:>{widths['Value']}}", value_color),
+            ]
+        )
+        print(row)
+
+
+def emit_share_success(snapshot: dict[str, object], token: str, base_url: str | None) -> None:
+    metrics = snapshot.get("metrics")
+    if not isinstance(metrics, dict):
+        raise SystemExit("Share snapshot metrics unavailable")
+
+    health = str(snapshot.get("health", "unknown"))
+    print("\nShare snapshot ready:")
+    print(f"token: {token}")
+    if base_url:
+        url = f"{base_url.rstrip('/')}/{token}"
+        print(f"url: {url}")
+    print(f"open command: rt-status-report --open-share {token}")
+    log_growth_event(
+        "share_snapshot_created",
+        {
+            "health": health,
+            "sim_mode": str(metrics.get("sim_mode", "n/a")),
+            "failsafe_enters": str(metrics.get("failsafe_enter_count", "n/a")),
+        },
+    )
+
+
 @dataclass
 class MonitorState:
     prev_status: dict[str, str] | None = None
@@ -502,7 +713,7 @@ def print_link_health(
     state.prev_sample_ts = now_mono
 
 
-def print_report(path: Path) -> None:
+def print_report(path: Path) -> dict[str, str]:
     status = parse_status(path)
     tick_keys = {k for k in status if k.endswith("_ticks")}
     ignore = JITTER_KEYS | DEADLINE_KEYS | WORKER_KEYS | FAILSAFE_KEYS | tick_keys | SIM_NET_KEYS
@@ -513,6 +724,7 @@ def print_report(path: Path) -> None:
     print_jitter_table(status)
     if status.get("sim_mode", "").lower() == "true":
         print_sim_net_table(status)
+    return status
 
 
 def main() -> None:
@@ -557,6 +769,21 @@ def main() -> None:
         default=3.0,
         help="Age threshold (seconds) for stall-level link alerts in monitor mode.",
     )
+    parser.add_argument(
+        "--share",
+        action="store_true",
+        help="Generate a compact share token for the current snapshot (requires --once).",
+    )
+    parser.add_argument(
+        "--share-url-base",
+        default=None,
+        help="Optional base URL prefix for rendered share links.",
+    )
+    parser.add_argument(
+        "--open-share",
+        default=None,
+        help="Decode and display a previously generated share token.",
+    )
     args = parser.parse_args()
     if args.systemd:
         args.no_color = True
@@ -569,6 +796,27 @@ def main() -> None:
     global ENABLE_COLOR
     ENABLE_COLOR = not args.no_color
 
+    if args.open_share and args.share:
+        raise SystemExit("Use either --share or --open-share, not both")
+
+    if args.open_share:
+        try:
+            snapshot = decode_share_token(args.open_share)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        print_share_snapshot(snapshot)
+        log_growth_event(
+            "share_snapshot_opened",
+            {
+                "health": str(snapshot.get("health", "n/a")),
+                "source": str(snapshot.get("source", "n/a")),
+            },
+        )
+        return
+
+    if args.share and not args.once:
+        raise SystemExit("--share requires --once")
+
     if not args.path.exists():
         raise SystemExit(f"{args.path} not found")
     if args.warn_sec <= 0 or args.stall_sec <= 0:
@@ -580,7 +828,11 @@ def main() -> None:
         if args.monitor:
             print_link_health(args.path, MonitorState(), args.warn_sec, args.stall_sec)
         else:
-            print_report(args.path)
+            status = print_report(args.path)
+            if args.share:
+                snapshot = build_share_snapshot(status, args.path)
+                token = encode_share_token(snapshot)
+                emit_share_success(snapshot, token, args.share_url_base)
         return
 
     command = "cls" if os.name == "nt" else "clear"
