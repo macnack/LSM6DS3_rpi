@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
 
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
+    std::signal(SIGPIPE, SIG_IGN);
 
     rt.run();
     g_runtime = nullptr;

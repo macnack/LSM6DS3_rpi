@@ -200,6 +200,13 @@ C++ development path in separate terminals:
 ./build/runtime/dummy_controller_cpp --config ./runtime/config/rt_core_sim_cpp_dev.toml
 ```
 
+MuJoCo TCP bridge (sim_net):
+
+```bash
+./build/runtime/rt_core --config ./runtime/config/rt_core_sim_mujoco_tcp.toml --status-file /tmp/rt_status.txt
+python3 dummy_rocket_sim/rt_bridge.py --sensor-port 56000 --actuator-port 56001 --headless
+```
+
 Useful CLI options:
 
 - `--duration-sec <seconds>`

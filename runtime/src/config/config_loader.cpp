@@ -168,6 +168,7 @@ RuntimeConfig load_runtime_config(const std::string& path) {
 
   std::unordered_set<std::string> allowed_sections = required_sections;
   allowed_sections.insert("killswitch");
+  allowed_sections.insert("sim_net");
 
   validate_allowed_sections(doc, allowed_sections);
 
@@ -363,6 +364,27 @@ RuntimeConfig load_runtime_config(const std::string& path) {
     cfg.controller_cpp.max_deflection_norm = as_double(v, "controller_cpp.max_deflection_norm");
   });
 
+  const auto sim_net_it = doc.find("sim_net");
+  if (sim_net_it != doc.end()) {
+    const auto& sim_net = sim_net_it->second;
+    validate_allowed_keys(sim_net, {"enabled", "sensor_host", "sensor_port", "actuator_bind_host", "actuator_port",
+                                    "connect_timeout_ms"},
+                          "sim_net");
+    maybe_apply(sim_net, "enabled", [&](const TomlValue& v) { cfg.sim_net.enabled = as_bool(v, "sim_net.enabled"); });
+    maybe_apply(sim_net, "sensor_host",
+                [&](const TomlValue& v) { cfg.sim_net.sensor_host = as_string(v, "sim_net.sensor_host"); });
+    maybe_apply(sim_net, "sensor_port",
+                [&](const TomlValue& v) { cfg.sim_net.sensor_port = static_cast<uint16_t>(as_u32(v, "sim_net.sensor_port")); });
+    maybe_apply(sim_net, "actuator_bind_host", [&](const TomlValue& v) {
+      cfg.sim_net.actuator_bind_host = as_string(v, "sim_net.actuator_bind_host");
+    });
+    maybe_apply(sim_net, "actuator_port",
+                [&](const TomlValue& v) { cfg.sim_net.actuator_port = static_cast<uint16_t>(as_u32(v, "sim_net.actuator_port")); });
+    maybe_apply(sim_net, "connect_timeout_ms", [&](const TomlValue& v) {
+      cfg.sim_net.connect_timeout_ms = as_u32(v, "sim_net.connect_timeout_ms");
+    });
+  }
+
   if (cfg.killswitch.nc_closed_value > 1) {
     throw std::runtime_error("killswitch.nc_closed_value must be 0 or 1");
   }
@@ -417,6 +439,14 @@ std::string runtime_config_to_string(const RuntimeConfig& cfg) {
         << " direction=" << s.direction << " trim_norm=" << s.trim_norm << " failsafe_norm="
         << s.failsafe_norm << "\n";
   }
+
+  oss << "[sim_net]\n";
+  oss << "enabled=" << (cfg.sim_net.enabled ? "true" : "false") << "\n";
+  oss << "sensor_host=" << cfg.sim_net.sensor_host << "\n";
+  oss << "sensor_port=" << cfg.sim_net.sensor_port << "\n";
+  oss << "actuator_bind_host=" << cfg.sim_net.actuator_bind_host << "\n";
+  oss << "actuator_port=" << cfg.sim_net.actuator_port << "\n";
+  oss << "connect_timeout_ms=" << cfg.sim_net.connect_timeout_ms << "\n";
 
   return oss.str();
 }

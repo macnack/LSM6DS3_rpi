@@ -113,6 +113,14 @@ struct RuntimeStats {
 
   bool killswitch_active = false;
   uint64_t killswitch_trip_count = 0;
+
+  // sim_net bridge
+  uint64_t sim_net_sensor_frames = 0;
+  uint64_t sim_net_sensor_crc_fail = 0;
+  uint64_t sim_net_sensor_disconnects = 0;
+  uint64_t sim_net_actuator_frames = 0;
+  uint64_t sim_net_actuator_send_errors = 0;
+  uint64_t sim_net_actuator_clients = 0;
 };
 
 }  // namespace runtime

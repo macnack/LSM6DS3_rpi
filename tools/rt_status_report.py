@@ -42,6 +42,11 @@ WORKER_KEYS = {
     for prefix in (primary, legacy)
     for suffix in ("accept_count", "reject_count")
 }
+SIM_NET_ROWS = (
+    ("Sensor", "sim_net_sensor_frames", "sim_net_sensor_crc_fail", "sim_net_sensor_disconnects"),
+    ("Actuator", "sim_net_actuator_frames", "sim_net_actuator_send_errors", "sim_net_actuator_clients"),
+)
+SIM_NET_KEYS = {k for row in SIM_NET_ROWS for k in row[1:]}
 
 
 def paint(text: str, color: str) -> str:
@@ -191,6 +196,33 @@ def print_jitter_table(status: dict[str, str]) -> None:
         print(" | ".join(parts))
 
 
+def print_sim_net_table(status: dict[str, str]) -> None:
+    header = ("Flow", "Frames", "Errors/CRC", "Disconnects/Clients")
+    widths = {"Flow": 10, "Frames": 14, "Errors/CRC": 16, "Disconnects/Clients": 20}
+    print("\nSim net (TCP bridge):")
+    print(format_table_header(header, widths))
+    print("-" * (sum(widths.values()) + (len(header) - 1) * 3))
+    for label, frames_key, error_key, extra_key in SIM_NET_ROWS:
+        frames = status.get(frames_key, "—")
+        errors = status.get(error_key, "—")
+        extra = status.get(extra_key, "—")
+        frames_fmt = f"{int(frames):{widths['Frames']},d}" if frames.isdigit() else frames.rjust(widths["Frames"])
+        errors_fmt = f"{int(errors):{widths['Errors/CRC']},d}" if errors.isdigit() else errors.rjust(widths["Errors/CRC"])
+        extra_fmt = f"{int(extra):{widths['Disconnects/Clients']},d}" if extra.isdigit() else extra.rjust(widths["Disconnects/Clients"])
+        frames_color = classify(frames_key, frames if frames != "—" else "0")
+        errors_color = classify(error_key, errors if errors != "—" else "0")
+        extra_color = classify(extra_key, extra if extra != "—" else "0")
+        row = " | ".join(
+            [
+                paint(f"{label:>{widths['Flow']}}", "white"),
+                paint(frames_fmt, frames_color),
+                paint(errors_fmt, errors_color),
+                paint(extra_fmt, extra_color),
+            ]
+        )
+        print(row)
+
+
 def parse_status(path: Path) -> dict[str, str]:
     data: dict[str, str] = {}
     for line in path.read_text().splitlines():
@@ -204,11 +236,13 @@ def parse_status(path: Path) -> dict[str, str]:
 def print_report(path: Path) -> None:
     status = parse_status(path)
     tick_keys = {k for k in status if k.endswith("_ticks")}
-    ignore = JITTER_KEYS | DEADLINE_KEYS | WORKER_KEYS | tick_keys
+    ignore = JITTER_KEYS | DEADLINE_KEYS | WORKER_KEYS | tick_keys | SIM_NET_KEYS
     print_kv(status, ignore)
     print_worker_table(status)
     print_deadline_tick_table(status)
     print_jitter_table(status)
+    if status.get("sim_mode", "").lower() == "true":
+        print_sim_net_table(status)
 
 
 def main() -> None:

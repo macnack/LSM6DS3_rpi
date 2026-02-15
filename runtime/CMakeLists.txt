@@ -15,6 +15,7 @@ add_library(runtime_core STATIC
   src/runtime/controller.cpp
   src/runtime/actuator.cpp
   src/runtime/sensors.cpp
+  src/runtime/sim_net.cpp
   src/runtime/kill_switch.cpp
   src/runtime/rt_thread.cpp
   src/runtime/runtime.cpp

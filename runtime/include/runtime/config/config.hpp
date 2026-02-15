@@ -111,6 +111,15 @@ struct ControllerCppSection {
   double max_deflection_norm = 0.8;
 };
 
+struct SimNetSection {
+  bool enabled = false;
+  std::string sensor_host = "127.0.0.1";
+  uint16_t sensor_port = 56000;
+  std::string actuator_bind_host = "127.0.0.1";
+  uint16_t actuator_port = 56001;
+  uint32_t connect_timeout_ms = 500;
+};
+
 struct RuntimeConfig {
   RuntimeSection runtime;
   ModesSection modes;
@@ -124,6 +133,7 @@ struct RuntimeConfig {
   std::array<ServoSection, kServoCount> servos{};
   EstimatorCppSection estimator_cpp;
   ControllerCppSection controller_cpp;
+  SimNetSection sim_net;
 };
 
 RuntimeConfig load_runtime_config(const std::string& path);
