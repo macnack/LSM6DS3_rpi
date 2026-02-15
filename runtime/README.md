@@ -161,6 +161,22 @@ cmake -S . -B build \
 cmake --build build -j
 ```
 
+Codec backend selection for Python workers (`runtime/python/ipc_common.py`):
+
+- default: `auto` (use `_runtime_ipc_codec` if importable and schema-compatible, else pure Python)
+- force Python: `RUNTIME_IPC_CODEC_BACKEND=python`
+- force C++ codec: `RUNTIME_IPC_CODEC_BACKEND=cpp` (startup fails if module is missing/incompatible)
+
+To require pybind codec build at configure time:
+
+```bash
+cmake -S . -B build \
+  -DBUILD_RUNTIME=ON \
+  -DRUNTIME_BUILD_IPC_CODEC_PYBIND=ON \
+  -DRUNTIME_REQUIRE_PYBIND=ON \
+  -Dpybind11_DIR="$(python3 -m pybind11 --cmakedir)"
+```
+
 Portable no-hardware build (sim runtime only):
 
 ```bash
@@ -225,6 +241,22 @@ Live link health monitor (sensor/actuator rates, stalls, disconnects):
 python3 tools/rt_status_report.py /tmp/rt_status.txt --monitor --interval 0.5
 ```
 
+Shareable runtime snapshot (for Slack/issues):
+
+```bash
+# Generate a compact token from one status snapshot.
+python3 tools/rt_status_report.py /tmp/rt_status.txt --once --share
+
+# Teammates can open the token directly.
+rt-status-report --open-share rtshare1_<token>
+```
+
+Growth event hook for share funnel metrics:
+
+- `share_snapshot_created`
+- `share_snapshot_opened`
+- Optional sink override: `RT_STATUS_REPORT_EVENT_LOG=/tmp/rt_status_report_events.jsonl`
+
 CSV recorder (sensor + estimator + controller snapshots):
 
 ```bash
@@ -259,6 +291,10 @@ CTest targets:
 - `runtime_unit_external_time_validation`
 - `runtime_unit_runtime_failsafe_causes`
 - `runtime_unit_sim_net_link`
+- `runtime_unit_ipc_codec_cpp_to_python`
+- `runtime_unit_ipc_codec_python_to_cpp`
+- `runtime_unit_python_ipc_codec`
+- `runtime_unit_python_ipc_codec_cpp_backend` (when `_runtime_ipc_codec` is built)
 - `runtime_smoke_python_dev`
 
 ## Notes
