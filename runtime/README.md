@@ -3,6 +3,12 @@
 `rt_core` is the runtime process that owns deterministic control tick timing and actuator outputs.
 It supports C++ native estimator/controller and external development workers (Python or C++) over shared-memory IPC.
 
+## Development Guide
+
+For implementation-focused extension workflows (new workers, additional I2C devices, custom estimator/controller), see:
+
+- `runtime/DEVELOPMENT.md`
+
 ## Architecture
 
 Workers in `rt_core`:
