@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,9 +49,12 @@ SIM_NET_ROWS = (
     ("Actuator", "sim_net_actuator_frames", "sim_net_actuator_send_errors", "sim_net_actuator_clients"),
 )
 SIM_NET_KEYS = {k for row in SIM_NET_ROWS for k in row[1:]}
+ENABLE_COLOR = True
 
 
 def paint(text: str, color: str) -> str:
+    if not ENABLE_COLOR:
+        return text
     return f"{COLOR[color]}{text}{COLOR['reset']}"
 
 
@@ -421,6 +425,21 @@ def main() -> None:
     parser.add_argument("path", nargs="?", type=Path, default=Path("/tmp/rt_status.txt"))
     parser.add_argument("--once", action="store_true", help="Run the report once and exit (default loops).")
     parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable ANSI colors (recommended for systemd/journald).",
+    )
+    parser.add_argument(
+        "--no-clear",
+        action="store_true",
+        help="Do not clear screen between refreshes.",
+    )
+    parser.add_argument(
+        "--systemd",
+        action="store_true",
+        help="Enable service-friendly defaults (equivalent to --no-color --no-clear).",
+    )
+    parser.add_argument(
         "--interval",
         type=float,
         default=0.5,
@@ -444,6 +463,17 @@ def main() -> None:
         help="Age threshold (seconds) for stall-level link alerts in monitor mode.",
     )
     args = parser.parse_args()
+    if args.systemd:
+        args.no_color = True
+        args.no_clear = True
+    if not sys.stdout.isatty():
+        args.no_clear = True
+    if os.environ.get("NO_COLOR") is not None:
+        args.no_color = True
+
+    global ENABLE_COLOR
+    ENABLE_COLOR = not args.no_color
+
     if not args.path.exists():
         raise SystemExit(f"{args.path} not found")
     if args.warn_sec <= 0 or args.stall_sec <= 0:
@@ -462,7 +492,8 @@ def main() -> None:
     monitor_state = MonitorState()
     try:
         while True:
-            os.system(command)
+            if not args.no_clear:
+                os.system(command)
             if args.monitor:
                 print_link_health(args.path, monitor_state, args.warn_sec, args.stall_sec)
             else:
