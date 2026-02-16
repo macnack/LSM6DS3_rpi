@@ -67,6 +67,25 @@ Runtime development configs:
 - `runtime/config/rt_core_sim_python_dev.toml` (Python dummy workers)
 - `runtime/config/rt_core_sim_cpp_dev.toml` (C++ dummy workers)
 
+## Runtime Shortcuts
+
+Use `rt.sh` from repo root to standardize build/run flows:
+
+```bash
+./rt.sh build
+./rt.sh run native
+./rt.sh run sim-py
+./rt.sh run-estimator sim-py
+./rt.sh run-controller sim-py
+```
+
+Discover all presets and options:
+
+```bash
+./rt.sh help
+./rt.sh paths
+```
+
 ## Build Only One
 
 IMU only:

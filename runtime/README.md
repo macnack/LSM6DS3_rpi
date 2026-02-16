@@ -90,6 +90,8 @@ Runtime is TOML-only (`--config <path>`). Required sections:
 Optional sections:
 
 - `[killswitch]` (hardware NC emergency input)
+- `[sim_net]` (TCP bridge mode)
+- `[imu_watchdog]` (invalid-stream detection and IMU auto-reinit)
 
 Important BARO/I2C keys in `[baro]`:
 
@@ -102,6 +104,17 @@ Important IMU keys in `[imu]`:
 - `gyro_odr`: gyroscope ODR (`power_down`, `12.5hz`, `26hz`, `52hz`, `104hz`, `208hz`, `416hz`, `833hz`)
 - `accel_scale`: accelerometer full-scale (`2g`, `4g`, `8g`, `16g`)
 - `gyro_scale`: gyroscope full-scale (`245dps`, `500dps`, `1000dps`, `2000dps`)
+
+IMU watchdog keys in `[imu_watchdog]`:
+
+- `enabled`: enable invalid-stream watchdog and auto-recovery logic
+- `zero_vector_consecutive`: consecutive all-zero samples before fault
+- `flatline_consecutive`: consecutive unchanged samples (within epsilon) before fault
+- `degenerate_pattern_consecutive`: consecutive `ax≈ay≈az` and `gx≈gy≈gz` samples before fault
+- `flatline_epsilon`: epsilon for flatline/degenerate comparisons
+- `healthy_recovery_samples`: required consecutive healthy samples before clearing fault
+- `recovery_backoff_ms`: wait between IMU stop/start reinit attempts
+- `max_reinit_attempts`: maximum reinit attempts (`0` means unlimited)
 
 Kill switch keys in `[killswitch]`:
 
@@ -141,6 +154,21 @@ Note: sysfs GPIO is used for broad compatibility. Configure pull-up/down and wir
 
 Control loop continues to run during I2C recovery.
 
+## IMU Watchdog and Recovery Policy
+
+`imu_worker` applies IMU invalid-stream detection before publishing `imu_valid`:
+
+1. reject NaN/Inf IMU fields immediately
+2. detect consecutive all-zero vectors
+3. detect consecutive flatline samples across all 6 IMU channels
+4. detect consecutive degenerate patterns where accel axes collapse (`ax≈ay≈az`) and gyro axes collapse (`gx≈gy≈gz`)
+
+On fault, runtime forces `imu_valid=false`, so the existing control-loop stale/invalid handling enters failsafe.
+Runtime then performs periodic IMU backend `stop()` + `start()` reinit attempts using `imu_watchdog.recovery_backoff_ms`
+until healthy samples are sustained for `imu_watchdog.healthy_recovery_samples`.
+
+No accel-magnitude plausibility check is used by this watchdog.
+
 ## Metrics and Jitter
 
 Runtime status file now includes:
@@ -149,6 +177,9 @@ Runtime status file now includes:
 - jitter percentiles (`p50`, `p95`, `p99`, `max`) for control, actuator, imu, baro scheduling
 - actuator command age (`last`, `max`)
 - `i2c_recovery_count`
+- IMU watchdog counters (`imu_watchdog_fault_count`, zero/flatline/degenerate counters)
+- IMU reinit counters (`imu_reinit_attempt_count`, `imu_reinit_success_count`, `imu_reinit_failure_count`)
+- IMU watchdog state and fault reason (`imu_watchdog_state_name`, `imu_last_fault_reason_name`)
 - kill switch state and trip count
 - external worker accept/reject counters
 - failsafe diagnostics (`failsafe_activation_count`, enter/exit events, per-cause counts)

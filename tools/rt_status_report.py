@@ -35,6 +35,8 @@ WARNING_KEYS = {
     "failsafe_cause_actuator_io_latch_count",
     "killswitch_active",
     "degraded_mode_active",
+    "imu_watchdog_fault_count",
+    "imu_reinit_failure_count",
 }
 CRITICAL_SUFFIXES = ("_deadline_miss_count", "_reject_count", "_trip_count")
 JITTER_THRESHOLDS = {"p50": 80000, "p95": 120000, "p99": 200000, "max": 300000}
@@ -146,6 +148,17 @@ def paint(text: str, color: str) -> str:
 
 def classify(key: str, value: str) -> str:
     lower = key.lower()
+    if lower == "imu_watchdog_state_name":
+        mapped = value.strip().lower()
+        if mapped == "healthy":
+            return "green"
+        if mapped in ("suspect", "recovering"):
+            return "yellow"
+        if mapped == "faulted":
+            return "red"
+        return "yellow"
+    if lower == "imu_last_fault_reason_name":
+        return "green" if value.strip().lower() == "none" else "yellow"
     if lower == "sim_net_actuator_client_connected":
         return "green" if value.strip().lower() in ("true", "1", "yes") else "yellow"
     if any(lower.endswith(suffix) for suffix in CRITICAL_SUFFIXES):

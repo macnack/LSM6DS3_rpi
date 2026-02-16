@@ -74,6 +74,17 @@ struct ImuSection {
   std::string gyro_scale = "245dps";
 };
 
+struct ImuWatchdogSection {
+  bool enabled = true;
+  uint32_t zero_vector_consecutive = 3;
+  uint32_t flatline_consecutive = 20;
+  uint32_t degenerate_pattern_consecutive = 20;
+  double flatline_epsilon = 1e-6;
+  uint32_t healthy_recovery_samples = 50;
+  uint32_t recovery_backoff_ms = 100;
+  uint32_t max_reinit_attempts = 0;  // 0 = unlimited
+};
+
 struct BaroSection {
   std::string i2c_bus = "/dev/i2c-1";
   uint32_t i2c_address = 0x77;
@@ -140,6 +151,7 @@ struct RuntimeConfig {
   SecuritySection security;
   IpcSection ipc;
   ImuSection imu;
+  ImuWatchdogSection imu_watchdog;
   BaroSection baro;
   KillSwitchSection killswitch;
   ActuatorSection actuator;

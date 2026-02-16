@@ -11,6 +11,7 @@
 #include "runtime/runtime/failsafe_diagnostics.hpp"
 #include "runtime/runtime/fallback.hpp"
 #include "runtime/runtime/kill_switch.hpp"
+#include "runtime/runtime/imu_watchdog.hpp"
 #include "runtime/runtime/rt_thread.hpp"
 #include "runtime/runtime/sensors.hpp"
 
@@ -836,6 +837,7 @@ class Runtime::Impl {
     uint64_t scheduled_tick_ns = monotonic_time_ns();
     uint64_t local_tick = 0;
     uint32_t consecutive_imu_failures = 0;
+    ImuWatchdog imu_watchdog(cfg_.imu_watchdog);
 
     while (!stop_requested_.load(std::memory_order_relaxed)) {
       const uint64_t now_ns = monotonic_time_ns();
@@ -851,6 +853,41 @@ class Runtime::Impl {
         if (!sample.t_ns) {
           sample.t_ns = now_ns;
         }
+
+        const ImuWatchdogStepResult watchdog_result = imu_watchdog.on_sample(sample, now_ns);
+        if (watchdog_result.force_invalid) {
+          sample.valid = false;
+        }
+
+        if (watchdog_result.should_attempt_reinit) {
+          bool reinit_ok = false;
+          try {
+            imu_backend_->stop();
+            imu_backend_->start();
+            reinit_ok = true;
+          } catch (const std::exception&) {
+            reinit_ok = false;
+          }
+          imu_watchdog.on_reinit_result(reinit_ok, now_ns);
+          bump_stat([reinit_ok](RuntimeStats& s) {
+            ++s.imu_reinit_attempt_count;
+            if (reinit_ok) {
+              ++s.imu_reinit_success_count;
+            } else {
+              ++s.imu_reinit_failure_count;
+            }
+          });
+        }
+
+        bump_stat([&](RuntimeStats& s) {
+          s.imu_watchdog_fault_count = imu_watchdog.fault_count();
+          s.imu_watchdog_zero_vector_count = imu_watchdog.zero_vector_count();
+          s.imu_watchdog_flatline_count = imu_watchdog.flatline_count();
+          s.imu_watchdog_degenerate_pattern_count = imu_watchdog.degenerate_pattern_count();
+          s.imu_last_fault_reason = static_cast<uint32_t>(imu_watchdog.last_fault_reason());
+          s.imu_watchdog_state = static_cast<uint32_t>(imu_watchdog.state());
+        });
+
         consecutive_imu_failures = sample.valid ? 0 : (consecutive_imu_failures + 1U);
         bump_stat([consecutive_imu_failures](RuntimeStats& s) {
           s.imu_consecutive_failures = consecutive_imu_failures;
@@ -1131,6 +1168,19 @@ class Runtime::Impl {
     out << "actuator_cmd_age_last_ns=" << s.actuator_cmd_age_last_ns << "\n";
     out << "actuator_cmd_age_max_ns=" << s.actuator_cmd_age_max_ns << "\n";
     out << "i2c_recovery_count=" << s.i2c_recovery_count << "\n";
+    out << "imu_watchdog_fault_count=" << s.imu_watchdog_fault_count << "\n";
+    out << "imu_watchdog_zero_vector_count=" << s.imu_watchdog_zero_vector_count << "\n";
+    out << "imu_watchdog_flatline_count=" << s.imu_watchdog_flatline_count << "\n";
+    out << "imu_watchdog_degenerate_pattern_count=" << s.imu_watchdog_degenerate_pattern_count << "\n";
+    out << "imu_reinit_attempt_count=" << s.imu_reinit_attempt_count << "\n";
+    out << "imu_reinit_success_count=" << s.imu_reinit_success_count << "\n";
+    out << "imu_reinit_failure_count=" << s.imu_reinit_failure_count << "\n";
+    out << "imu_last_fault_reason=" << s.imu_last_fault_reason << "\n";
+    out << "imu_last_fault_reason_name="
+        << imu_fault_reason_name(static_cast<ImuFaultReason>(s.imu_last_fault_reason)) << "\n";
+    out << "imu_watchdog_state=" << s.imu_watchdog_state << "\n";
+    out << "imu_watchdog_state_name="
+        << imu_watchdog_state_name(static_cast<ImuWatchdogState>(s.imu_watchdog_state)) << "\n";
     out << "imu_consecutive_failures=" << s.imu_consecutive_failures << "\n";
     out << "baro_consecutive_failures=" << s.baro_consecutive_failures << "\n";
     out << "ipc_permission_reject_count=" << s.ipc_permission_reject_count << "\n";

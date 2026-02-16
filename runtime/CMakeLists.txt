@@ -18,6 +18,7 @@ add_library(runtime_core STATIC
   src/runtime/controller.cpp
   src/runtime/actuator.cpp
   src/runtime/sensors.cpp
+  src/runtime/imu_watchdog.cpp
   src/runtime/sim_net.cpp
   src/runtime/external_time_validation.cpp
   src/runtime/failsafe_diagnostics.cpp
@@ -93,6 +94,11 @@ if(BUILD_TESTING)
   target_link_libraries(runtime_unit_runtime_failsafe_causes PRIVATE runtime_core)
   target_compile_options(runtime_unit_runtime_failsafe_causes PRIVATE -Wall -Wextra -Wpedantic)
   add_test(NAME runtime_unit_runtime_failsafe_causes COMMAND runtime_unit_runtime_failsafe_causes)
+
+  add_executable(runtime_unit_imu_watchdog tests/test_imu_watchdog.cpp)
+  target_link_libraries(runtime_unit_imu_watchdog PRIVATE runtime_core)
+  target_compile_options(runtime_unit_imu_watchdog PRIVATE -Wall -Wextra -Wpedantic)
+  add_test(NAME runtime_unit_imu_watchdog COMMAND runtime_unit_imu_watchdog)
 
   add_executable(runtime_unit_sim_net_link tests/test_sim_net_link.cpp)
   target_link_libraries(runtime_unit_sim_net_link PRIVATE runtime_core)

@@ -127,6 +127,15 @@ struct RuntimeStats {
   uint64_t actuator_cmd_age_max_ns = 0;
 
   uint64_t i2c_recovery_count = 0;
+  uint64_t imu_watchdog_fault_count = 0;
+  uint64_t imu_watchdog_zero_vector_count = 0;
+  uint64_t imu_watchdog_flatline_count = 0;
+  uint64_t imu_watchdog_degenerate_pattern_count = 0;
+  uint64_t imu_reinit_attempt_count = 0;
+  uint64_t imu_reinit_success_count = 0;
+  uint64_t imu_reinit_failure_count = 0;
+  uint32_t imu_last_fault_reason = 0;
+  uint32_t imu_watchdog_state = 0;
 
   bool killswitch_active = false;
   uint64_t killswitch_trip_count = 0;

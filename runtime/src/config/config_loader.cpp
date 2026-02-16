@@ -170,6 +170,7 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   std::unordered_set<std::string> allowed_sections = required_sections;
   allowed_sections.insert("killswitch");
   allowed_sections.insert("sim_net");
+  allowed_sections.insert("imu_watchdog");
 
   validate_allowed_sections(doc, allowed_sections);
 
@@ -285,6 +286,40 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   maybe_apply(imu, "accel_scale",
               [&](const TomlValue& v) { cfg.imu.accel_scale = as_string(v, "imu.accel_scale"); });
   maybe_apply(imu, "gyro_scale", [&](const TomlValue& v) { cfg.imu.gyro_scale = as_string(v, "imu.gyro_scale"); });
+
+  const auto imu_watchdog_it = doc.find("imu_watchdog");
+  if (imu_watchdog_it != doc.end()) {
+    const auto& imu_watchdog = imu_watchdog_it->second;
+    validate_allowed_keys(imu_watchdog,
+                          {"enabled", "zero_vector_consecutive", "flatline_consecutive",
+                           "degenerate_pattern_consecutive", "flatline_epsilon",
+                           "healthy_recovery_samples", "recovery_backoff_ms", "max_reinit_attempts"},
+                          "imu_watchdog");
+    maybe_apply(imu_watchdog, "enabled",
+                [&](const TomlValue& v) { cfg.imu_watchdog.enabled = as_bool(v, "imu_watchdog.enabled"); });
+    maybe_apply(imu_watchdog, "zero_vector_consecutive", [&](const TomlValue& v) {
+      cfg.imu_watchdog.zero_vector_consecutive = as_u32(v, "imu_watchdog.zero_vector_consecutive");
+    });
+    maybe_apply(imu_watchdog, "flatline_consecutive", [&](const TomlValue& v) {
+      cfg.imu_watchdog.flatline_consecutive = as_u32(v, "imu_watchdog.flatline_consecutive");
+    });
+    maybe_apply(imu_watchdog, "degenerate_pattern_consecutive", [&](const TomlValue& v) {
+      cfg.imu_watchdog.degenerate_pattern_consecutive =
+          as_u32(v, "imu_watchdog.degenerate_pattern_consecutive");
+    });
+    maybe_apply(imu_watchdog, "flatline_epsilon", [&](const TomlValue& v) {
+      cfg.imu_watchdog.flatline_epsilon = as_double(v, "imu_watchdog.flatline_epsilon");
+    });
+    maybe_apply(imu_watchdog, "healthy_recovery_samples", [&](const TomlValue& v) {
+      cfg.imu_watchdog.healthy_recovery_samples = as_u32(v, "imu_watchdog.healthy_recovery_samples");
+    });
+    maybe_apply(imu_watchdog, "recovery_backoff_ms", [&](const TomlValue& v) {
+      cfg.imu_watchdog.recovery_backoff_ms = as_u32(v, "imu_watchdog.recovery_backoff_ms");
+    });
+    maybe_apply(imu_watchdog, "max_reinit_attempts", [&](const TomlValue& v) {
+      cfg.imu_watchdog.max_reinit_attempts = as_u32(v, "imu_watchdog.max_reinit_attempts");
+    });
+  }
 
   const auto& baro = require_section(doc, "baro");
   validate_allowed_keys(baro, {"i2c_bus", "i2c_address", "recovery_error_threshold", "recovery_backoff_ms"},
@@ -429,6 +464,24 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   if (cfg.timeouts.max_consecutive_baro_failures == 0) {
     throw std::runtime_error("timeouts.max_consecutive_baro_failures must be >= 1");
   }
+  if (cfg.imu_watchdog.zero_vector_consecutive == 0) {
+    throw std::runtime_error("imu_watchdog.zero_vector_consecutive must be >= 1");
+  }
+  if (cfg.imu_watchdog.flatline_consecutive == 0) {
+    throw std::runtime_error("imu_watchdog.flatline_consecutive must be >= 1");
+  }
+  if (cfg.imu_watchdog.degenerate_pattern_consecutive == 0) {
+    throw std::runtime_error("imu_watchdog.degenerate_pattern_consecutive must be >= 1");
+  }
+  if (!std::isfinite(cfg.imu_watchdog.flatline_epsilon) || cfg.imu_watchdog.flatline_epsilon <= 0.0) {
+    throw std::runtime_error("imu_watchdog.flatline_epsilon must be > 0");
+  }
+  if (cfg.imu_watchdog.healthy_recovery_samples == 0) {
+    throw std::runtime_error("imu_watchdog.healthy_recovery_samples must be >= 1");
+  }
+  if (cfg.imu_watchdog.recovery_backoff_ms == 0) {
+    throw std::runtime_error("imu_watchdog.recovery_backoff_ms must be >= 1");
+  }
   if (cfg.security.require_loopback_sim_net && cfg.sim_net.enabled) {
     const bool sensor_loopback = (cfg.sim_net.sensor_host == "127.0.0.1");
     const bool actuator_loopback = (cfg.sim_net.actuator_bind_host == "127.0.0.1");
@@ -481,6 +534,16 @@ std::string runtime_config_to_string(const RuntimeConfig& cfg) {
   oss << "gyro_odr=" << cfg.imu.gyro_odr << "\n";
   oss << "accel_scale=" << cfg.imu.accel_scale << "\n";
   oss << "gyro_scale=" << cfg.imu.gyro_scale << "\n";
+
+  oss << "[imu_watchdog]\n";
+  oss << "enabled=" << (cfg.imu_watchdog.enabled ? "true" : "false") << "\n";
+  oss << "zero_vector_consecutive=" << cfg.imu_watchdog.zero_vector_consecutive << "\n";
+  oss << "flatline_consecutive=" << cfg.imu_watchdog.flatline_consecutive << "\n";
+  oss << "degenerate_pattern_consecutive=" << cfg.imu_watchdog.degenerate_pattern_consecutive << "\n";
+  oss << "flatline_epsilon=" << cfg.imu_watchdog.flatline_epsilon << "\n";
+  oss << "healthy_recovery_samples=" << cfg.imu_watchdog.healthy_recovery_samples << "\n";
+  oss << "recovery_backoff_ms=" << cfg.imu_watchdog.recovery_backoff_ms << "\n";
+  oss << "max_reinit_attempts=" << cfg.imu_watchdog.max_reinit_attempts << "\n";
 
   oss << "[baro]\n";
   oss << "recovery_error_threshold=" << cfg.baro.recovery_error_threshold << "\n";

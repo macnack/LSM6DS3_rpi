@@ -55,6 +55,16 @@ gyro_odr = "104hz"
 accel_scale = "2g"
 gyro_scale = "245dps"
 
+[imu_watchdog]
+enabled = true
+zero_vector_consecutive = 3
+flatline_consecutive = 20
+degenerate_pattern_consecutive = 20
+flatline_epsilon = 1e-6
+healthy_recovery_samples = 50
+recovery_backoff_ms = 100
+max_reinit_attempts = 0
+
 [baro]
 i2c_bus = "/dev/i2c-1"
 i2c_address = 0x77
