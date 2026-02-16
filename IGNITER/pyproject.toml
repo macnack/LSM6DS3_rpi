@@ -1,0 +1,25 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "igniter_rpi"
+version = "0.1.0"
+description = "Synchronized 4-channel igniter state machine and GPIO batch control"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{name = "igniter contributors"}]
+license = {text = "MIT"}
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: C++",
+  "Operating System :: POSIX :: Linux",
+]
+
+[tool.scikit-build]
+wheel.packages = ["python/igniter_rpi"]
+cmake.build-type = "Release"
+
+[tool.scikit-build.cmake.define]
+IGNITER_BUILD_PYTHON = "ON"

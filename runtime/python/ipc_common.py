@@ -23,10 +23,14 @@ MESSAGE_VERSION = 1
 SENSOR_MSG_STRUCT = struct.Struct("<IHHQQBB6xddddddddI")
 ESTIMATOR_MSG_STRUCT = struct.Struct("<IHHQQB7x4f3f3fI")
 CONTROLLER_MSG_STRUCT = struct.Struct("<IHHQQB7x4fI")
+IGNITER_COMMAND_MSG_STRUCT = struct.Struct("<IHHQQBB6x4II")
+IGNITER_STATUS_MSG_STRUCT = struct.Struct("<IHHQQBBB5x4B4B4II")
 
 SENSOR_PAYLOAD_BYTES = 88
 ESTIMATOR_PAYLOAD_BYTES = 64
 CONTROLLER_PAYLOAD_BYTES = 40
+IGNITER_COMMAND_PAYLOAD_BYTES = 40
+IGNITER_STATUS_PAYLOAD_BYTES = 48
 CODEC_API_VERSION = 1
 
 _CODEC_BACKEND_ENV = "RUNTIME_IPC_CODEC_BACKEND"
@@ -59,6 +63,18 @@ class SensorSnapshot:
     temperature_c: float
 
 
+@dataclass
+class IgniterStatus:
+    seq: int
+    t_ns: int
+    armed: bool
+    global_fault_latched: bool
+    active_mask: int
+    state: tuple[int, int, int, int]
+    fault: tuple[int, int, int, int]
+    remaining_ms: tuple[int, int, int, int]
+
+
 def _requested_codec_backend() -> str:
     raw = os.environ.get(_CODEC_BACKEND_ENV, _CODEC_BACKEND_AUTO).strip().lower()
     if raw not in _VALID_CODEC_BACKENDS:
@@ -75,9 +91,13 @@ def _validate_cpp_codec(codec: object) -> None:
         "SENSOR_MSG_SIZE": SENSOR_MSG_STRUCT.size,
         "ESTIMATOR_MSG_SIZE": ESTIMATOR_MSG_STRUCT.size,
         "CONTROLLER_MSG_SIZE": CONTROLLER_MSG_STRUCT.size,
+        "IGNITER_COMMAND_MSG_SIZE": IGNITER_COMMAND_MSG_STRUCT.size,
+        "IGNITER_STATUS_MSG_SIZE": IGNITER_STATUS_MSG_STRUCT.size,
         "SENSOR_PAYLOAD_BYTES": SENSOR_PAYLOAD_BYTES,
         "ESTIMATOR_PAYLOAD_BYTES": ESTIMATOR_PAYLOAD_BYTES,
         "CONTROLLER_PAYLOAD_BYTES": CONTROLLER_PAYLOAD_BYTES,
+        "IGNITER_COMMAND_PAYLOAD_BYTES": IGNITER_COMMAND_PAYLOAD_BYTES,
+        "IGNITER_STATUS_PAYLOAD_BYTES": IGNITER_STATUS_PAYLOAD_BYTES,
     }
     mismatches: list[str] = []
     for attr, expected in expected_values.items():
@@ -365,6 +385,160 @@ def encode_controller_command(seq: int, t_ns: int, armed: bool, servo_norm: tupl
     if _CPP_CODEC is not None:
         return _CPP_CODEC.encode_controller_command(seq, t_ns, armed, servo_norm[0], servo_norm[1], servo_norm[2], servo_norm[3])
     return _encode_controller_command_python(seq, t_ns, armed, servo_norm)
+
+
+def _encode_igniter_command_python(
+    seq: int,
+    t_ns: int,
+    action: int,
+    fire_mask: int,
+    duration_ms: tuple[int, int, int, int],
+) -> bytes:
+    msg_without_crc = IGNITER_COMMAND_MSG_STRUCT.pack(
+        MESSAGE_MAGIC,
+        MESSAGE_VERSION,
+        IGNITER_COMMAND_PAYLOAD_BYTES,
+        seq,
+        t_ns,
+        action & 0xFF,
+        fire_mask & 0xFF,
+        int(duration_ms[0]),
+        int(duration_ms[1]),
+        int(duration_ms[2]),
+        int(duration_ms[3]),
+        0,
+    )
+    crc = finalize_crc(msg_without_crc[:-4])
+    return msg_without_crc[:-4] + struct.pack("<I", crc)
+
+
+def encode_igniter_command(
+    seq: int,
+    t_ns: int,
+    action: int,
+    fire_mask: int = 0,
+    duration_ms: tuple[int, int, int, int] = (0, 0, 0, 0),
+) -> bytes:
+    if _CPP_CODEC is not None:
+        return _CPP_CODEC.encode_igniter_command(
+            seq,
+            t_ns,
+            int(action) & 0xFF,
+            int(fire_mask) & 0xFF,
+            int(duration_ms[0]),
+            int(duration_ms[1]),
+            int(duration_ms[2]),
+            int(duration_ms[3]),
+        )
+    return _encode_igniter_command_python(seq, t_ns, action, fire_mask, duration_ms)
+
+
+def decode_igniter_command(payload: bytes) -> dict[str, object] | None:
+    if _CPP_CODEC is not None:
+        decoded = _CPP_CODEC.decode_igniter_command(payload)
+        if decoded is not None:
+            return decoded
+    if len(payload) != IGNITER_COMMAND_MSG_STRUCT.size:
+        return None
+    values = IGNITER_COMMAND_MSG_STRUCT.unpack(payload)
+    (
+        magic,
+        version,
+        payload_bytes,
+        seq,
+        t_ns,
+        action,
+        fire_mask,
+        d0,
+        d1,
+        d2,
+        d3,
+        crc,
+    ) = values
+    if magic != MESSAGE_MAGIC or version != MESSAGE_VERSION or payload_bytes != IGNITER_COMMAND_PAYLOAD_BYTES:
+        return None
+    if crc != finalize_crc(payload[:-4]):
+        return None
+    return {
+        "seq": int(seq),
+        "t_ns": int(t_ns),
+        "action": int(action),
+        "fire_mask": int(fire_mask),
+        "duration_ms": (int(d0), int(d1), int(d2), int(d3)),
+    }
+
+
+def _decode_igniter_status_python(payload: bytes, *, check_crc: bool = True) -> IgniterStatus | None:
+    if len(payload) != IGNITER_STATUS_MSG_STRUCT.size:
+        return None
+    values = IGNITER_STATUS_MSG_STRUCT.unpack(payload)
+    (
+        magic,
+        version,
+        payload_bytes,
+        seq,
+        t_ns,
+        armed,
+        global_fault_latched,
+        active_mask,
+        s0,
+        s1,
+        s2,
+        s3,
+        f0,
+        f1,
+        f2,
+        f3,
+        r0,
+        r1,
+        r2,
+        r3,
+        crc,
+    ) = values
+    if magic != MESSAGE_MAGIC or version != MESSAGE_VERSION or payload_bytes != IGNITER_STATUS_PAYLOAD_BYTES:
+        return None
+    if check_crc and crc != finalize_crc(payload[:-4]):
+        return None
+    return IgniterStatus(
+        seq=int(seq),
+        t_ns=int(t_ns),
+        armed=bool(armed),
+        global_fault_latched=bool(global_fault_latched),
+        active_mask=int(active_mask),
+        state=(int(s0), int(s1), int(s2), int(s3)),
+        fault=(int(f0), int(f1), int(f2), int(f3)),
+        remaining_ms=(int(r0), int(r1), int(r2), int(r3)),
+    )
+
+
+def _igniter_status_from_cpp_dict(sample: dict[str, object]) -> IgniterStatus | None:
+    try:
+        state = tuple(int(x) for x in sample["state"])
+        fault = tuple(int(x) for x in sample["fault"])
+        remaining = tuple(int(x) for x in sample["remaining_ms"])
+        if len(state) != 4 or len(fault) != 4 or len(remaining) != 4:
+            return None
+        return IgniterStatus(
+            seq=int(sample["seq"]),
+            t_ns=int(sample["t_ns"]),
+            armed=bool(sample["armed"]),
+            global_fault_latched=bool(sample["global_fault_latched"]),
+            active_mask=int(sample["active_mask"]),
+            state=(state[0], state[1], state[2], state[3]),
+            fault=(fault[0], fault[1], fault[2], fault[3]),
+            remaining_ms=(remaining[0], remaining[1], remaining[2], remaining[3]),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def decode_igniter_status(payload: bytes, *, check_crc: bool = True) -> IgniterStatus | None:
+    if _CPP_CODEC is not None and check_crc:
+        decoded = _CPP_CODEC.decode_igniter_status(payload)
+        if decoded is None:
+            return None
+        return _igniter_status_from_cpp_dict(decoded)
+    return _decode_igniter_status_python(payload, check_crc=check_crc)
 
 
 def _encode_estimator_state_python(

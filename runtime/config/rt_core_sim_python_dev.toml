@@ -12,11 +12,13 @@ controller_mode = "python_dev"
 [threads]
 control_hz = 250
 actuator_hz = 50
+igniter_hz = 250
 imu_hz = 500
 estimator_hz = 250
 baro_hz = 20
 control_priority = 90
 actuator_priority = 85
+igniter_priority = 82
 imu_priority = 80
 estimator_priority = 60
 i2c_priority = 50
@@ -85,6 +87,45 @@ latch_failsafe_on_io_errors = true
 max_io_errors_before_latch = 3
 frequency_hz = 50
 slew_limit_norm_per_sec = 4.0
+
+[igniter]
+enabled = false
+use_hardware = false
+fault_policy = "global"
+settle_ms = 5
+latch_faults = true
+default_fire_ms = 200
+max_fire_ms = 2000
+command_shm = "/rt_igniter_command_v1"
+status_shm = "/rt_igniter_status_v1"
+
+[igniter0]
+enabled = false
+input_chip = "/dev/gpiochip0"
+input_line = 4
+status_chip = "/dev/gpiochip0"
+status_line = 17
+
+[igniter1]
+enabled = false
+input_chip = "/dev/gpiochip0"
+input_line = 5
+status_chip = "/dev/gpiochip0"
+status_line = 18
+
+[igniter2]
+enabled = false
+input_chip = "/dev/gpiochip0"
+input_line = 6
+status_chip = "/dev/gpiochip0"
+status_line = 19
+
+[igniter3]
+enabled = false
+input_chip = "/dev/gpiochip0"
+input_line = 7
+status_chip = "/dev/gpiochip0"
+status_line = 20
 
 [servo0]
 chip = 0

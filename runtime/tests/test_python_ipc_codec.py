@@ -109,6 +109,64 @@ class IpcCodecTests(unittest.TestCase):
         self.assertAlmostEqual(fields[9], -0.4, places=6)
         self.assertEqual(fields[10], IPC.finalize_crc(msg[:-4]))
 
+    def test_encode_igniter_command(self) -> None:
+        msg = IPC.encode_igniter_command(
+            seq=13,
+            t_ns=999,
+            action=3,
+            fire_mask=0x05,
+            duration_ms=(100, 0, 200, 0),
+        )
+        fields = IPC.IGNITER_COMMAND_MSG_STRUCT.unpack(msg)
+        self.assertEqual(fields[0], IPC.MESSAGE_MAGIC)
+        self.assertEqual(fields[1], IPC.MESSAGE_VERSION)
+        self.assertEqual(fields[2], IPC.IGNITER_COMMAND_PAYLOAD_BYTES)
+        self.assertEqual(fields[3], 13)
+        self.assertEqual(fields[4], 999)
+        self.assertEqual(fields[5], 3)
+        self.assertEqual(fields[6], 0x05)
+        self.assertEqual(fields[7], 100)
+        self.assertEqual(fields[9], 200)
+        self.assertEqual(fields[11], IPC.finalize_crc(msg[:-4]))
+
+    def test_decode_igniter_status(self) -> None:
+        payload = bytearray(
+            IPC.IGNITER_STATUS_MSG_STRUCT.pack(
+                IPC.MESSAGE_MAGIC,
+                IPC.MESSAGE_VERSION,
+                IPC.IGNITER_STATUS_PAYLOAD_BYTES,
+                21,
+                555_000,
+                1,
+                0,
+                0x03,
+                2,
+                2,
+                1,
+                1,
+                0,
+                0,
+                3,
+                0,
+                50,
+                50,
+                0,
+                0,
+                0,
+            )
+        )
+        crc = IPC.finalize_crc(payload[:-4])
+        struct.pack_into("<I", payload, len(payload) - 4, crc)
+        decoded = IPC.decode_igniter_status(bytes(payload))
+        self.assertIsNotNone(decoded)
+        assert decoded is not None
+        self.assertEqual(decoded.seq, 21)
+        self.assertTrue(decoded.armed)
+        self.assertEqual(decoded.active_mask, 0x03)
+        self.assertEqual(decoded.state[0], 2)
+        self.assertEqual(decoded.fault[2], 3)
+        self.assertEqual(decoded.remaining_ms[1], 50)
+
     def test_encode_estimator_state(self) -> None:
         q = (0.7071067, 0.0, 0.7071067, 0.0)
         vel = (1.0, -2.0, 3.0)

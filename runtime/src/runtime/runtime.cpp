@@ -15,6 +15,11 @@
 #include "runtime/runtime/rt_thread.hpp"
 #include "runtime/runtime/sensors.hpp"
 
+#if defined(RUNTIME_HAVE_IGNITER) && (RUNTIME_HAVE_IGNITER == 1)
+#include "igniter/gpio_batch.hpp"
+#include "igniter/igniter_bank.hpp"
+#endif
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -231,6 +236,31 @@ bool validate_external_controller_msg(const ExternalControllerCommandMsg& msg, C
   return true;
 }
 
+#if defined(RUNTIME_HAVE_IGNITER) && (RUNTIME_HAVE_IGNITER == 1)
+bool validate_igniter_command_msg(const IgniterCommandMsg& msg) {
+  if (!validate_header(msg.msg_magic, msg.msg_version, msg.payload_bytes,
+                       payload_size_bytes<IgniterCommandMsg>())) {
+    return false;
+  }
+  if (!validate_message_crc(msg)) {
+    return false;
+  }
+  if (msg.fire_mask > 0x0F) {
+    return false;
+  }
+  const auto action = static_cast<IgniterCommandAction>(msg.action);
+  switch (action) {
+    case IgniterCommandAction::None:
+    case IgniterCommandAction::Arm:
+    case IgniterCommandAction::Disarm:
+    case IgniterCommandAction::FireMask:
+    case IgniterCommandAction::ClearFault:
+      return true;
+  }
+  return false;
+}
+#endif
+
 ControlCommand make_failsafe_command(const std::array<ServoSection, kServoCount>& servos, uint64_t now_ns) {
   ControlCommand cmd{};
   cmd.t_ns = now_ns;
@@ -275,6 +305,10 @@ void record_external_time_reject(ExternalTimeValidationResult result, RuntimeSta
   }
 }
 
+uint64_t ns_to_ms(uint64_t t_ns) {
+  return t_ns / 1'000'000ULL;
+}
+
 }  // namespace
 
 class Runtime::Impl {
@@ -286,6 +320,8 @@ class Runtime::Impl {
         sensor_snapshot_mailbox_(cfg_.ipc.sensor_snapshot_shm, true),
         estimator_state_mailbox_(cfg_.ipc.estimator_state_shm, true),
         controller_cmd_mailbox_(cfg_.ipc.controller_command_shm, true),
+        igniter_cmd_mailbox_(cfg_.igniter.command_shm, true),
+        igniter_status_mailbox_(cfg_.igniter.status_shm, true),
         cpp_estimator_(cfg_.estimator_cpp),
         cpp_controller_(cfg_.controller_cpp),
         actuator_mapper_(cfg_.actuator, cfg_.servos),
@@ -371,6 +407,49 @@ class Runtime::Impl {
       } else {
         actuator_backend_ = std::make_unique<SimActuatorBackend>();
       }
+#if defined(RUNTIME_HAVE_IGNITER) && (RUNTIME_HAVE_IGNITER == 1)
+      if (cfg_.igniter.enabled) {
+        igniter::IgniterBank::Config ign_cfg;
+        ign_cfg.faultPolicy = (cfg_.igniter.fault_policy == "isolated") ? igniter::FaultPolicy::Isolated
+                                                                         : igniter::FaultPolicy::Global;
+        for (std::size_t i = 0; i < kIgniterCount; ++i) {
+          ign_cfg.channels[i].enabled = cfg_.igniter_channels[i].enabled;
+          ign_cfg.channels[i].driver.settleMs = cfg_.igniter.settle_ms;
+          ign_cfg.channels[i].driver.latchFaults = cfg_.igniter.latch_faults;
+          ign_cfg.channels[i].igniter.defaultFireMs = cfg_.igniter.default_fire_ms;
+          ign_cfg.channels[i].igniter.maxFireMs = cfg_.igniter.max_fire_ms;
+        }
+
+        std::unique_ptr<igniter::GpioBatchOut> out;
+        std::unique_ptr<igniter::GpioBatchIn> in;
+        if (!sim_mode && cfg_.igniter.use_hardware) {
+          out = igniter::make_hardware_batch_out();
+          in = igniter::make_hardware_batch_in();
+        } else {
+          out = std::make_unique<igniter::SimGpioBatchOut>();
+          in = std::make_unique<igniter::SimGpioBatchIn>();
+        }
+
+        igniter_bank_ = std::make_unique<igniter::IgniterBank>(ign_cfg, std::move(out), std::move(in));
+
+        std::array<uint32_t, kIgniterCount> output_lines{0, 0, 0, 0};
+        std::array<uint32_t, kIgniterCount> status_lines{0, 0, 0, 0};
+        for (std::size_t i = 0; i < kIgniterCount; ++i) {
+          output_lines[i] = cfg_.igniter_channels[i].input_line;
+          status_lines[i] = cfg_.igniter_channels[i].status_line;
+        }
+        igniter_bank_->bind_hardware(cfg_.igniter_channels[0].input_chip, cfg_.igniter_channels[0].status_chip,
+                                     output_lines, status_lines);
+        igniter_bank_->init(ns_to_ms(monotonic_time_ns()));
+      } else {
+        igniter_bank_.reset();
+      }
+#else
+      if (cfg_.igniter.enabled) {
+        throw std::runtime_error(
+            "Igniter service enabled in config but runtime was built without IGNITER module support");
+      }
+#endif
 
       imu_backend_->start();
       baro_backend_->start();
@@ -405,6 +484,10 @@ class Runtime::Impl {
       sensor_snapshot_mailbox_.open(true);
       estimator_state_mailbox_.open(true);
       controller_cmd_mailbox_.open(true);
+      if (cfg_.igniter.enabled) {
+        igniter_cmd_mailbox_.open(true);
+        igniter_status_mailbox_.open(true);
+      }
     } catch (const std::exception&) {
       bump_stat([](RuntimeStats& s) {
         ++s.ipc_permission_reject_count;
@@ -416,6 +499,14 @@ class Runtime::Impl {
   }
 
   void shutdown_backends() noexcept {
+#if defined(RUNTIME_HAVE_IGNITER) && (RUNTIME_HAVE_IGNITER == 1)
+    if (igniter_bank_) {
+      try {
+        igniter_bank_->disarm(ns_to_ms(monotonic_time_ns()));
+      } catch (...) {
+      }
+    }
+#endif
     if (actuator_backend_) {
       actuator_backend_->stop();
     }
@@ -435,6 +526,7 @@ class Runtime::Impl {
   void start_workers() {
     workers_.push_back(std::thread([this] { control_worker(); }));
     workers_.push_back(std::thread([this] { actuator_worker(); }));
+    workers_.push_back(std::thread([this] { igniter_worker(); }));
     workers_.push_back(std::thread([this] { imu_worker(); }));
     workers_.push_back(std::thread([this] { i2c_hub_worker(); }));
     workers_.push_back(std::thread([this] { estimator_worker(); }));
@@ -826,6 +918,98 @@ class Runtime::Impl {
     }
   }
 
+  void igniter_worker() {
+    std::string rt_err;
+    if (!configure_current_thread_rt("igniter", cfg_.threads.igniter_priority, -1, &rt_err)) {
+      std::cerr << "igniter_worker RT warning: " << rt_err << "\n";
+    }
+
+    const uint64_t period_ns = hz_to_period_ns(cfg_.threads.igniter_hz);
+
+#if defined(RUNTIME_HAVE_IGNITER) && (RUNTIME_HAVE_IGNITER == 1)
+    if (!cfg_.igniter.enabled || !igniter_bank_) {
+      return;
+    }
+#else
+    (void)period_ns;
+    return;
+#endif
+
+    uint64_t scheduled_tick_ns = monotonic_time_ns();
+    uint64_t cmd_seq_seen = 0;
+    uint64_t status_seq = 0;
+
+    while (!stop_requested_.load(std::memory_order_relaxed)) {
+      const uint64_t now_ns = monotonic_time_ns();
+      const uint64_t now_ms = ns_to_ms(now_ns);
+
+#if defined(RUNTIME_HAVE_IGNITER) && (RUNTIME_HAVE_IGNITER == 1)
+      IgniterCommandMsg cmd{};
+      uint64_t stable_seq = 0;
+      if (igniter_cmd_mailbox_.try_read(cmd, &stable_seq) && stable_seq != cmd_seq_seen) {
+        cmd_seq_seen = stable_seq;
+
+        bool accepted = false;
+        if (validate_igniter_command_msg(cmd)) {
+          const auto action = static_cast<IgniterCommandAction>(cmd.action);
+          switch (action) {
+            case IgniterCommandAction::None:
+              accepted = true;
+              break;
+            case IgniterCommandAction::Arm:
+              accepted = igniter_bank_->arm(now_ms);
+              break;
+            case IgniterCommandAction::Disarm:
+              igniter_bank_->disarm(now_ms);
+              accepted = true;
+              break;
+            case IgniterCommandAction::FireMask:
+              accepted = igniter_bank_->fire_mask(cmd.fire_mask, cmd.duration_ms, now_ms);
+              break;
+            case IgniterCommandAction::ClearFault:
+              igniter_bank_->clear_fault(now_ms);
+              accepted = true;
+              break;
+          }
+        }
+        bump_stat([accepted](RuntimeStats& s) {
+          if (accepted) {
+            ++s.igniter_command_accept_count;
+          } else {
+            ++s.igniter_command_reject_count;
+          }
+        });
+      }
+
+      const bool kill_active = kill_switch_active_.load(std::memory_order_relaxed);
+      const auto snap = igniter_bank_->update(now_ms, kill_active);
+
+      IgniterStatusMsg status{};
+      fill_message_header(status, ++status_seq, now_ns);
+      status.armed = snap.armed ? 1U : 0U;
+      status.global_fault_latched = snap.globalFaultLatched ? 1U : 0U;
+      status.active_mask = snap.activeMask;
+      for (std::size_t i = 0; i < kIgniterCount; ++i) {
+        status.state[i] = static_cast<uint8_t>(snap.states[i]);
+        status.fault[i] = static_cast<uint8_t>(snap.faults[i]);
+        status.remaining_ms[i] = snap.remainingMs[i];
+      }
+      finalize_message_crc(status);
+      igniter_status_mailbox_.write(status);
+
+      bump_stat([&](RuntimeStats& s) {
+        ++s.igniter_ticks;
+        s.igniter_armed = snap.armed;
+        s.igniter_global_fault_latched = snap.globalFaultLatched;
+        s.igniter_active_mask = snap.activeMask;
+      });
+#endif
+
+      scheduled_tick_ns += period_ns;
+      sleep_until_ns(scheduled_tick_ns);
+    }
+  }
+
   void imu_worker() {
     std::string rt_err;
     if (!configure_current_thread_rt("imu", cfg_.threads.imu_priority, cfg_.threads.imu_cpu, &rt_err)) {
@@ -1127,6 +1311,7 @@ class Runtime::Impl {
     out << "degraded_mode_active=" << (s.degraded_mode_active ? "true" : "false") << "\n";
     out << "control_ticks=" << s.control_ticks << "\n";
     out << "actuator_ticks=" << s.actuator_ticks << "\n";
+    out << "igniter_ticks=" << s.igniter_ticks << "\n";
     out << "imu_ticks=" << s.imu_ticks << "\n";
     out << "i2c_ticks=" << s.i2c_ticks << "\n";
     out << "estimator_ticks=" << s.estimator_ticks << "\n";
@@ -1134,6 +1319,8 @@ class Runtime::Impl {
     out << "external_estimator_reject_count=" << s.external_estimator_reject_count << "\n";
     out << "external_controller_accept_count=" << s.external_controller_accept_count << "\n";
     out << "external_controller_reject_count=" << s.external_controller_reject_count << "\n";
+    out << "igniter_command_accept_count=" << s.igniter_command_accept_count << "\n";
+    out << "igniter_command_reject_count=" << s.igniter_command_reject_count << "\n";
     out << "failsafe_activation_count=" << s.failsafe_activation_count << "\n";
     out << "failsafe_enter_count=" << s.failsafe_enter_count << "\n";
     out << "failsafe_exit_count=" << s.failsafe_exit_count << "\n";
@@ -1191,6 +1378,10 @@ class Runtime::Impl {
         << "\n";
     out << "killswitch_active=" << (s.killswitch_active ? "true" : "false") << "\n";
     out << "killswitch_trip_count=" << s.killswitch_trip_count << "\n";
+    out << "igniter_armed=" << (s.igniter_armed ? "true" : "false") << "\n";
+    out << "igniter_global_fault_latched=" << (s.igniter_global_fault_latched ? "true" : "false")
+        << "\n";
+    out << "igniter_active_mask=" << static_cast<uint32_t>(s.igniter_active_mask) << "\n";
     out << "sim_net_sensor_frames=" << s.sim_net_sensor_frames << "\n";
     out << "sim_net_sensor_crc_fail=" << s.sim_net_sensor_crc_fail << "\n";
     out << "sim_net_sensor_disconnects=" << s.sim_net_sensor_disconnects << "\n";
@@ -1221,11 +1412,16 @@ class Runtime::Impl {
   ShmMailbox<SensorSnapshotMsg> sensor_snapshot_mailbox_;
   ShmMailbox<ExternalEstimatorStateMsg> estimator_state_mailbox_;
   ShmMailbox<ExternalControllerCommandMsg> controller_cmd_mailbox_;
+  ShmMailbox<IgniterCommandMsg> igniter_cmd_mailbox_;
+  ShmMailbox<IgniterStatusMsg> igniter_status_mailbox_;
 
   std::unique_ptr<ImuBackend> imu_backend_;
   std::unique_ptr<BaroBackend> baro_backend_;
   std::unique_ptr<ActuatorBackend> actuator_backend_;
   std::unique_ptr<SimNetLink> sim_net_link_;
+#if defined(RUNTIME_HAVE_IGNITER) && (RUNTIME_HAVE_IGNITER == 1)
+  std::unique_ptr<igniter::IgniterBank> igniter_bank_;
+#endif
 
   CppEstimator cpp_estimator_;
   CppController cpp_controller_;

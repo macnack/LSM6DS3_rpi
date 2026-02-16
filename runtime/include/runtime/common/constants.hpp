@@ -6,6 +6,7 @@
 namespace runtime {
 
 constexpr std::size_t kServoCount = 4;
+constexpr std::size_t kIgniterCount = 4;
 // IPC review note:
 // - Bump kMessageVersion for wire-format breaking changes (field layout/order/type/size, header semantics, CRC scope).
 // - Change kMessageMagic only for a new protocol family/channel that must be hard-isolated from existing decoders.
