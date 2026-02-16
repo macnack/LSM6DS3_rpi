@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1.7
+# Pi-like build container for this monorepo (Linux ARM64 + I2C kernel headers)
+
+ARG UBUNTU_VERSION=24.04
+FROM --platform=$TARGETPLATFORM ubuntu:${UBUNTU_VERSION}
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=UTC
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    ninja-build \
+    pkg-config \
+    ccache \
+    git \
+    ca-certificates \
+    python3 \
+    python3-dev \
+    python3-pip \
+    python3-venv \
+    pybind11-dev \
+    linux-libc-dev \
+    libi2c-dev \
+    i2c-tools \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work
+COPY . /work
+
+# Verify the header that fails on macOS host builds is present in-container.
+RUN test -f /usr/include/linux/i2c.h
+
+# Default: full C++ monorepo build (Python modules disabled)
+RUN cmake -S . -B build -G Ninja \
+    -DBUILD_RUNTIME=ON \
+    -DLSM6DS3_BUILD_PYTHON=OFF \
+    -DBMP390_BUILD_PYTHON=OFF \
+    -DSERVO_BUILD_PYTHON=OFF \
+    -DADS1115_BUILD_PYTHON=OFF \
+ && cmake --build build -j"$(nproc)"
+
+CMD ["bash"]
