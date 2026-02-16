@@ -68,6 +68,10 @@ struct ImuSection {
   std::string spi_device = "/dev/spidev0.0";
   uint32_t spi_speed_hz = 5'000'000;
   uint32_t spi_mode = 3;
+  std::string accel_odr = "104hz";
+  std::string gyro_odr = "104hz";
+  std::string accel_scale = "2g";
+  std::string gyro_scale = "245dps";
 };
 
 struct BaroSection {

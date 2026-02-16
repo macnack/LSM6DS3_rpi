@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "rpi_sensors"
 version = "0.1.0"
-description = "Meta package + root build hook for IMU (LSM6DS3) and BARO (BMP390)"
+description = "Meta package + root build hook for IMU (LSM6DS3), BARO (BMP390), SERVO, and ADS1115 ADC"
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [{name = "RPI Sensors contributors"}]
@@ -33,6 +33,7 @@ include = [
   "IMU/**",
   "BARO/**",
   "SERVO/**",
+  "ADC/**",
 ]
 
 [project.scripts]

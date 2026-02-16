@@ -96,6 +96,13 @@ Important BARO/I2C keys in `[baro]`:
 - `recovery_error_threshold`: consecutive read failures before BARO stop/start recovery
 - `recovery_backoff_ms`: wait between stop/start recovery attempts
 
+Important IMU keys in `[imu]`:
+
+- `accel_odr`: accelerometer ODR (`power_down`, `12.5hz`, `26hz`, `52hz`, `104hz`, `208hz`, `416hz`, `833hz`)
+- `gyro_odr`: gyroscope ODR (`power_down`, `12.5hz`, `26hz`, `52hz`, `104hz`, `208hz`, `416hz`, `833hz`)
+- `accel_scale`: accelerometer full-scale (`2g`, `4g`, `8g`, `16g`)
+- `gyro_scale`: gyroscope full-scale (`245dps`, `500dps`, `1000dps`, `2000dps`)
+
 Kill switch keys in `[killswitch]`:
 
 - `enabled`: enable hardware kill switch monitoring

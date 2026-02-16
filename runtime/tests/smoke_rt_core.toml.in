@@ -50,6 +50,10 @@ open_retry_count = 300
 spi_device = "/dev/spidev0.0"
 spi_speed_hz = 5000000
 spi_mode = 3
+accel_odr = "104hz"
+gyro_odr = "104hz"
+accel_scale = "2g"
+gyro_scale = "245dps"
 
 [baro]
 i2c_bus = "/dev/i2c-1"

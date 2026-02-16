@@ -274,10 +274,17 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   });
 
   const auto& imu = require_section(doc, "imu");
-  validate_allowed_keys(imu, {"spi_device", "spi_speed_hz", "spi_mode"}, "imu");
+  validate_allowed_keys(imu, {"spi_device", "spi_speed_hz", "spi_mode", "accel_odr", "gyro_odr",
+                              "accel_scale", "gyro_scale"},
+                        "imu");
   maybe_apply(imu, "spi_device", [&](const TomlValue& v) { cfg.imu.spi_device = as_string(v, "imu.spi_device"); });
   maybe_apply(imu, "spi_speed_hz", [&](const TomlValue& v) { cfg.imu.spi_speed_hz = as_u32(v, "imu.spi_speed_hz"); });
   maybe_apply(imu, "spi_mode", [&](const TomlValue& v) { cfg.imu.spi_mode = as_u32(v, "imu.spi_mode"); });
+  maybe_apply(imu, "accel_odr", [&](const TomlValue& v) { cfg.imu.accel_odr = as_string(v, "imu.accel_odr"); });
+  maybe_apply(imu, "gyro_odr", [&](const TomlValue& v) { cfg.imu.gyro_odr = as_string(v, "imu.gyro_odr"); });
+  maybe_apply(imu, "accel_scale",
+              [&](const TomlValue& v) { cfg.imu.accel_scale = as_string(v, "imu.accel_scale"); });
+  maybe_apply(imu, "gyro_scale", [&](const TomlValue& v) { cfg.imu.gyro_scale = as_string(v, "imu.gyro_scale"); });
 
   const auto& baro = require_section(doc, "baro");
   validate_allowed_keys(baro, {"i2c_bus", "i2c_address", "recovery_error_threshold", "recovery_backoff_ms"},
@@ -465,6 +472,15 @@ std::string runtime_config_to_string(const RuntimeConfig& cfg) {
   oss << "[security]\n";
   oss << "require_local_ipc_permissions=" << (cfg.security.require_local_ipc_permissions ? "true" : "false") << "\n";
   oss << "require_loopback_sim_net=" << (cfg.security.require_loopback_sim_net ? "true" : "false") << "\n";
+
+  oss << "[imu]\n";
+  oss << "spi_device=" << cfg.imu.spi_device << "\n";
+  oss << "spi_speed_hz=" << cfg.imu.spi_speed_hz << "\n";
+  oss << "spi_mode=" << cfg.imu.spi_mode << "\n";
+  oss << "accel_odr=" << cfg.imu.accel_odr << "\n";
+  oss << "gyro_odr=" << cfg.imu.gyro_odr << "\n";
+  oss << "accel_scale=" << cfg.imu.accel_scale << "\n";
+  oss << "gyro_scale=" << cfg.imu.gyro_scale << "\n";
 
   oss << "[baro]\n";
   oss << "recovery_error_threshold=" << cfg.baro.recovery_error_threshold << "\n";
