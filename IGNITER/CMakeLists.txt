@@ -39,6 +39,15 @@ if(IGNITER_HAVE_LIBGPIOD)
   target_link_libraries(igniter PRIVATE ${LIBGPIOD_LINK_LIBRARIES})
 endif()
 
+add_executable(igniter_vn5e160s_demo examples/vn5e160s_demo.cpp)
+target_link_libraries(igniter_vn5e160s_demo PRIVATE igniter)
+
+add_executable(igniter_state_machine_demo examples/igniter_demo.cpp)
+target_link_libraries(igniter_state_machine_demo PRIVATE igniter)
+
+add_executable(igniter_bank_demo examples/igniter_bank_demo.cpp)
+target_link_libraries(igniter_bank_demo PRIVATE igniter)
+
 if(IGNITER_BUILD_PYTHON)
   if(POLICY CMP0148)
     cmake_policy(SET CMP0148 NEW)

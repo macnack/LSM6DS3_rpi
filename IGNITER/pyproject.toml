@@ -23,3 +23,6 @@ cmake.build-type = "Release"
 
 [tool.scikit-build.cmake.define]
 IGNITER_BUILD_PYTHON = "ON"
+
+[project.scripts]
+igniter-demo = "igniter_rpi.cli:main"
