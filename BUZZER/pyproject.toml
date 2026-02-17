@@ -1,0 +1,39 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "buzzer_rpi"
+version = "0.1.0"
+description = "Production-grade Linux GPIO buzzer library and Python bindings for Raspberry Pi"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{name = "buzzer contributors"}]
+license = {text = "MIT"}
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: C++",
+  "Operating System :: POSIX :: Linux",
+]
+dependencies = []
+
+[project.optional-dependencies]
+yaml = ["PyYAML>=6.0"]
+
+[tool.scikit-build]
+wheel.packages = ["python/buzzer_rpi"]
+cmake.build-type = "Release"
+
+[tool.scikit-build.cmake.define]
+BUZZER_BUILD_PYTHON = "ON"
+
+[project.scripts]
+buzzer-play = "buzzer_rpi.cli:buzzer_play_main"
+buzzer-signal = "buzzer_rpi.cli:buzzer_signal_main"
+buzzer-profile-lint = "buzzer_rpi.cli:buzzer_profile_lint_main"
+
+[tool.cibuildwheel]
+build = ["cp313-manylinux_aarch64"]
+archs = ["aarch64"]
+skip = ["*-musllinux*"]

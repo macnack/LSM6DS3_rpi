@@ -1,0 +1,102 @@
+{
+  "name": "ardupilot_like_v1",
+  "base_times_ms": {
+    "SHORT_MS": 120,
+    "MEDIUM_MS": 300,
+    "LONG_MS": 700,
+    "VERY_LONG_MS": 3000,
+    "GAP_MS": 120,
+    "PAUSE_3S_MS": 3000
+  },
+  "events": {
+    "ARMING": {
+      "pattern": [["ON", 3000]],
+      "repeat": 1,
+      "priority": "INFO",
+      "policy": "QUEUE",
+      "token": "event.arming"
+    },
+    "ARMING_FAILURE": {
+      "pattern": [["ON", "LONG_MS"]],
+      "repeat": 1,
+      "priority": "ALARM",
+      "policy": "REPLACE",
+      "token": "event.arming_failure"
+    },
+    "DISARMED": {
+      "pattern": [["ON", 180]],
+      "repeat": 1,
+      "priority": "INFO",
+      "policy": "QUEUE",
+      "token": "event.disarmed"
+    },
+    "GYRO_INIT_DONE": {
+      "pattern": [
+        ["ON", 80], ["OFF", 80], ["ON", 80], ["OFF", 80],
+        ["ON", 80], ["OFF", 80], ["ON", 80], ["OFF", 80],
+        ["ON", 80], ["OFF", 80], ["ON", 80], ["OFF", 80], ["ON", 80]
+      ],
+      "repeat": 1,
+      "priority": "INFO",
+      "policy": "DROP_IF_BUSY",
+      "token": "event.gyro_init_done"
+    },
+    "READY_TO_ARM": {
+      "pattern": [
+        ["ON", "SHORT_MS"], ["OFF", "GAP_MS"], ["ON", "SHORT_MS"],
+        ["OFF", "GAP_MS"], ["ON", "SHORT_MS"], ["OFF", "GAP_MS"], ["ON", 900]
+      ],
+      "repeat": 1,
+      "priority": "INFO",
+      "policy": "QUEUE",
+      "token": "event.ready_to_arm"
+    }
+  },
+  "alarms": {
+    "BATTERY_FAILSAFE": {
+      "pattern": [["ON", "SHORT_MS"], ["OFF", 2880]],
+      "repeat": "forever",
+      "priority": "ALARM",
+      "policy": "REPLACE",
+      "token": "alarm.battery_failsafe"
+    },
+    "EKF_FAILURE": {
+      "pattern": [
+        ["ON", 450], ["OFF", 150], ["ON", "MEDIUM_MS"], ["OFF", "GAP_MS"],
+        ["ON", 150], ["OFF", "GAP_MS"], ["ON", 150], ["OFF", 1710]
+      ],
+      "repeat": "forever",
+      "priority": "ALARM",
+      "policy": "REPLACE",
+      "token": "alarm.ekf_failure"
+    },
+    "LOST_VEHICLE": {
+      "pattern": [["ON", 150], ["OFF", 150], ["ON", 150], ["OFF", 2700]],
+      "repeat": "forever",
+      "priority": "CRITICAL",
+      "policy": "REPLACE",
+      "token": "alarm.lost_vehicle"
+    },
+    "EVACUATION_TEMPORAL3": {
+      "pattern": [
+        ["ON", 500], ["OFF", 500], ["ON", 500], ["OFF", 500], ["ON", 500], ["OFF", 1500]
+      ],
+      "repeat": "forever",
+      "priority": "CRITICAL",
+      "policy": "REPLACE",
+      "token": "alarm.evacuation_temporal3"
+    },
+    "MISSING_SOS": {
+      "pattern": [
+        ["ON", "SHORT_MS"], ["OFF", "GAP_MS"], ["ON", "SHORT_MS"], ["OFF", "GAP_MS"], ["ON", "SHORT_MS"], ["OFF", 360],
+        ["ON", "LONG_MS"], ["OFF", "GAP_MS"], ["ON", "LONG_MS"], ["OFF", "GAP_MS"], ["ON", "LONG_MS"], ["OFF", 360],
+        ["ON", "SHORT_MS"], ["OFF", "GAP_MS"], ["ON", "SHORT_MS"], ["OFF", "GAP_MS"], ["ON", "SHORT_MS"]
+      ],
+      "repeat": "forever",
+      "gap_ms": "PAUSE_3S_MS",
+      "priority": "CRITICAL",
+      "policy": "REPLACE",
+      "token": "alarm.missing_sos"
+    }
+  }
+}

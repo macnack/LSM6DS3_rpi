@@ -93,6 +93,76 @@ py::bytes encode_controller_command(uint64_t seq, uint64_t t_ns, bool armed, flo
   return py::bytes(reinterpret_cast<const char*>(&msg), sizeof(msg));
 }
 
+py::object decode_igniter_command(const py::bytes& bytes) {
+  IgniterCommandMsg msg{};
+  if (!decode_message_bytes(bytes, msg)) {
+    return py::none();
+  }
+  py::dict d;
+  d["seq"] = msg.seq;
+  d["t_ns"] = msg.t_ns;
+  d["action"] = msg.action;
+  d["fire_mask"] = msg.fire_mask;
+  py::tuple durations(kIgniterCount);
+  for (std::size_t i = 0; i < kIgniterCount; ++i) {
+    durations[i] = msg.duration_ms[i];
+  }
+  d["duration_ms"] = std::move(durations);
+  return std::move(d);
+}
+
+py::bytes encode_igniter_command(uint64_t seq, uint64_t t_ns, uint8_t action, uint8_t fire_mask, uint32_t d0,
+                                 uint32_t d1, uint32_t d2, uint32_t d3) {
+  IgniterCommandMsg msg{};
+  fill_message_header(msg, seq, t_ns);
+  msg.action = action;
+  msg.fire_mask = fire_mask;
+  msg.duration_ms = {d0, d1, d2, d3};
+  finalize_message_crc(msg);
+  return py::bytes(reinterpret_cast<const char*>(&msg), sizeof(msg));
+}
+
+py::object decode_igniter_status(const py::bytes& bytes) {
+  IgniterStatusMsg msg{};
+  if (!decode_message_bytes(bytes, msg)) {
+    return py::none();
+  }
+  py::dict d;
+  d["seq"] = msg.seq;
+  d["t_ns"] = msg.t_ns;
+  d["armed"] = (msg.armed != 0);
+  d["global_fault_latched"] = (msg.global_fault_latched != 0);
+  d["active_mask"] = msg.active_mask;
+  py::tuple state(kIgniterCount);
+  py::tuple fault(kIgniterCount);
+  py::tuple remaining(kIgniterCount);
+  for (std::size_t i = 0; i < kIgniterCount; ++i) {
+    state[i] = msg.state[i];
+    fault[i] = msg.fault[i];
+    remaining[i] = msg.remaining_ms[i];
+  }
+  d["state"] = std::move(state);
+  d["fault"] = std::move(fault);
+  d["remaining_ms"] = std::move(remaining);
+  return std::move(d);
+}
+
+py::bytes encode_igniter_status(uint64_t seq, uint64_t t_ns, bool armed, bool global_fault_latched,
+                                uint8_t active_mask, uint8_t s0, uint8_t s1, uint8_t s2, uint8_t s3, uint8_t f0,
+                                uint8_t f1, uint8_t f2, uint8_t f3, uint32_t r0, uint32_t r1, uint32_t r2,
+                                uint32_t r3) {
+  IgniterStatusMsg msg{};
+  fill_message_header(msg, seq, t_ns);
+  msg.armed = armed ? 1U : 0U;
+  msg.global_fault_latched = global_fault_latched ? 1U : 0U;
+  msg.active_mask = active_mask;
+  msg.state = {s0, s1, s2, s3};
+  msg.fault = {f0, f1, f2, f3};
+  msg.remaining_ms = {r0, r1, r2, r3};
+  finalize_message_crc(msg);
+  return py::bytes(reinterpret_cast<const char*>(&msg), sizeof(msg));
+}
+
 py::object decode_estimator_state(const py::bytes& bytes) {
   ExternalEstimatorStateMsg msg{};
   if (!decode_message_bytes(bytes, msg)) {
@@ -145,9 +215,13 @@ PYBIND11_MODULE(_runtime_ipc_codec, m) {
   m.attr("SENSOR_MSG_SIZE") = py::int_(sizeof(runtime::SensorSnapshotMsg));
   m.attr("ESTIMATOR_MSG_SIZE") = py::int_(sizeof(runtime::ExternalEstimatorStateMsg));
   m.attr("CONTROLLER_MSG_SIZE") = py::int_(sizeof(runtime::ExternalControllerCommandMsg));
+  m.attr("IGNITER_COMMAND_MSG_SIZE") = py::int_(sizeof(runtime::IgniterCommandMsg));
+  m.attr("IGNITER_STATUS_MSG_SIZE") = py::int_(sizeof(runtime::IgniterStatusMsg));
   m.attr("SENSOR_PAYLOAD_BYTES") = py::int_(runtime::payload_size_bytes<runtime::SensorSnapshotMsg>());
   m.attr("ESTIMATOR_PAYLOAD_BYTES") = py::int_(runtime::payload_size_bytes<runtime::ExternalEstimatorStateMsg>());
   m.attr("CONTROLLER_PAYLOAD_BYTES") = py::int_(runtime::payload_size_bytes<runtime::ExternalControllerCommandMsg>());
+  m.attr("IGNITER_COMMAND_PAYLOAD_BYTES") = py::int_(runtime::payload_size_bytes<runtime::IgniterCommandMsg>());
+  m.attr("IGNITER_STATUS_PAYLOAD_BYTES") = py::int_(runtime::payload_size_bytes<runtime::IgniterStatusMsg>());
 
   m.def("decode_sensor_snapshot", &runtime::decode_sensor_snapshot, py::arg("bytes"));
   m.def("encode_sensor_snapshot", &runtime::encode_sensor_snapshot, py::arg("seq"), py::arg("t_ns"),
@@ -158,6 +232,16 @@ PYBIND11_MODULE(_runtime_ipc_codec, m) {
   m.def("decode_controller_command", &runtime::decode_controller_command, py::arg("bytes"));
   m.def("encode_controller_command", &runtime::encode_controller_command, py::arg("seq"), py::arg("t_ns"),
         py::arg("armed"), py::arg("s0"), py::arg("s1"), py::arg("s2"), py::arg("s3"));
+
+  m.def("decode_igniter_command", &runtime::decode_igniter_command, py::arg("bytes"));
+  m.def("encode_igniter_command", &runtime::encode_igniter_command, py::arg("seq"), py::arg("t_ns"),
+        py::arg("action"), py::arg("fire_mask"), py::arg("d0"), py::arg("d1"), py::arg("d2"),
+        py::arg("d3"));
+  m.def("decode_igniter_status", &runtime::decode_igniter_status, py::arg("bytes"));
+  m.def("encode_igniter_status", &runtime::encode_igniter_status, py::arg("seq"), py::arg("t_ns"),
+        py::arg("armed"), py::arg("global_fault_latched"), py::arg("active_mask"), py::arg("s0"),
+        py::arg("s1"), py::arg("s2"), py::arg("s3"), py::arg("f0"), py::arg("f1"), py::arg("f2"),
+        py::arg("f3"), py::arg("r0"), py::arg("r1"), py::arg("r2"), py::arg("r3"));
 
   m.def("decode_estimator_state", &runtime::decode_estimator_state, py::arg("bytes"));
   m.def("encode_estimator_state", &runtime::encode_estimator_state, py::arg("seq"), py::arg("t_ns"), py::arg("valid"),

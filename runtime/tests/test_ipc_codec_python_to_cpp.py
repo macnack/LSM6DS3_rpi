@@ -21,7 +21,11 @@ def main() -> int:
     import _runtime_ipc_codec as cpp_codec  # noqa: WPS433
     os.environ["RUNTIME_IPC_CODEC_BACKEND"] = "python"
     sys.modules.pop("runtime.python.ipc_common", None)
-    from runtime.python.ipc_common import encode_controller_command, encode_estimator_state  # noqa: WPS433
+    from runtime.python.ipc_common import (  # noqa: WPS433
+        encode_controller_command,
+        encode_estimator_state,
+        encode_igniter_command,
+    )
 
     cmd_blob = encode_controller_command(
         seq=9,
@@ -36,6 +40,21 @@ def main() -> int:
         raise RuntimeError(f"Unexpected decoded command header: {cmd}")
     if not math.isclose(cmd["servo_norm"][2], 0.3, rel_tol=0, abs_tol=1e-7):
         raise RuntimeError(f"servo_norm[2] mismatch: {cmd['servo_norm'][2]}")
+
+    ign_blob = encode_igniter_command(
+        seq=10,
+        t_ns=666,
+        action=3,
+        fire_mask=0x0F,
+        duration_ms=(100, 200, 300, 400),
+    )
+    ign = cpp_codec.decode_igniter_command(ign_blob)
+    if ign is None:
+        raise RuntimeError("C++ decode_igniter_command rejected valid Python-encoded command")
+    if ign["seq"] != 10 or ign["t_ns"] != 666 or ign["action"] != 3 or ign["fire_mask"] != 0x0F:
+        raise RuntimeError(f"Unexpected decoded igniter header: {ign}")
+    if ign["duration_ms"][3] != 400:
+        raise RuntimeError(f"igniter duration mismatch: {ign['duration_ms']}")
 
     est_blob = encode_estimator_state(
         seq=11,

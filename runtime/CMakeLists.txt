@@ -13,11 +13,13 @@ add_library(runtime_core STATIC
   src/config/config_loader.cpp
   src/ipc/crc32.cpp
   src/ipc/shm_mailbox.cpp
+  src/ipc/igniter_client.cpp
   src/runtime/fallback.cpp
   src/runtime/estimator.cpp
   src/runtime/controller.cpp
   src/runtime/actuator.cpp
   src/runtime/sensors.cpp
+  src/runtime/imu_watchdog.cpp
   src/runtime/sim_net.cpp
   src/runtime/external_time_validation.cpp
   src/runtime/failsafe_diagnostics.cpp
@@ -45,6 +47,7 @@ endif()
 
 set(RUNTIME_HAVE_IMU 0)
 set(RUNTIME_HAVE_BARO 0)
+set(RUNTIME_HAVE_IGNITER 0)
 if(TARGET lsm6ds3)
   target_link_libraries(runtime_core PUBLIC lsm6ds3)
   set(RUNTIME_HAVE_IMU 1)
@@ -53,10 +56,15 @@ if(TARGET bmp390)
   target_link_libraries(runtime_core PUBLIC bmp390)
   set(RUNTIME_HAVE_BARO 1)
 endif()
+if(TARGET igniter)
+  target_link_libraries(runtime_core PUBLIC igniter)
+  set(RUNTIME_HAVE_IGNITER 1)
+endif()
 
 target_compile_definitions(runtime_core PRIVATE
   RUNTIME_HAVE_IMU=${RUNTIME_HAVE_IMU}
   RUNTIME_HAVE_BARO=${RUNTIME_HAVE_BARO}
+  RUNTIME_HAVE_IGNITER=${RUNTIME_HAVE_IGNITER}
 )
 
 target_compile_options(runtime_core PRIVATE -Wall -Wextra -Wpedantic)
@@ -94,10 +102,20 @@ if(BUILD_TESTING)
   target_compile_options(runtime_unit_runtime_failsafe_causes PRIVATE -Wall -Wextra -Wpedantic)
   add_test(NAME runtime_unit_runtime_failsafe_causes COMMAND runtime_unit_runtime_failsafe_causes)
 
+  add_executable(runtime_unit_imu_watchdog tests/test_imu_watchdog.cpp)
+  target_link_libraries(runtime_unit_imu_watchdog PRIVATE runtime_core)
+  target_compile_options(runtime_unit_imu_watchdog PRIVATE -Wall -Wextra -Wpedantic)
+  add_test(NAME runtime_unit_imu_watchdog COMMAND runtime_unit_imu_watchdog)
+
   add_executable(runtime_unit_sim_net_link tests/test_sim_net_link.cpp)
   target_link_libraries(runtime_unit_sim_net_link PRIVATE runtime_core)
   target_compile_options(runtime_unit_sim_net_link PRIVATE -Wall -Wextra -Wpedantic)
   add_test(NAME runtime_unit_sim_net_link COMMAND runtime_unit_sim_net_link)
+
+  add_executable(runtime_unit_igniter_config_validation tests/test_igniter_config_validation.cpp)
+  target_link_libraries(runtime_unit_igniter_config_validation PRIVATE runtime_core)
+  target_compile_options(runtime_unit_igniter_config_validation PRIVATE -Wall -Wextra -Wpedantic)
+  add_test(NAME runtime_unit_igniter_config_validation COMMAND runtime_unit_igniter_config_validation)
 
   find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 

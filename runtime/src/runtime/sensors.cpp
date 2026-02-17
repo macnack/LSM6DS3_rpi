@@ -1,7 +1,9 @@
 #include "runtime/runtime/sensors.hpp"
 
 #include <cmath>
+#include <cctype>
 #include <memory>
+#include <string>
 #include <stdexcept>
 
 #if defined(__linux__) && (RUNTIME_HAVE_IMU == 1)
@@ -23,12 +25,33 @@ namespace runtime {
 namespace {
 
 #if RUNTIME_ENABLE_IMU_HW
+std::string normalize_token(std::string value) {
+  std::string out;
+  out.reserve(value.size());
+  for (const char ch : value) {
+    if (ch == '_' || ch == '-' || std::isspace(static_cast<unsigned char>(ch))) {
+      continue;
+    }
+    out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+  }
+  return out;
+}
+#endif
+
+#if RUNTIME_ENABLE_IMU_HW
 class HardwareImuBackend final : public ImuBackend {
  public:
   explicit HardwareImuBackend(const RuntimeConfig& cfg)
-      : sensor_(cfg.imu.spi_device, cfg.imu.spi_speed_hz, static_cast<uint8_t>(cfg.imu.spi_mode)) {}
+      : sensor_(cfg.imu.spi_device, cfg.imu.spi_speed_hz, static_cast<uint8_t>(cfg.imu.spi_mode)),
+        cfg_(cfg) {}
 
-  void start() override { sensor_.begin(); }
+  void start() override {
+    sensor_.begin();
+    sensor_.set_accel_odr(parse_accel_odr(cfg_.imu.accel_odr));
+    sensor_.set_gyro_odr(parse_gyro_odr(cfg_.imu.gyro_odr));
+    sensor_.set_accel_scale(parse_accel_scale(cfg_.imu.accel_scale));
+    sensor_.set_gyro_scale(parse_gyro_scale(cfg_.imu.gyro_scale));
+  }
 
   void stop() noexcept override { sensor_.close(true); }
 
@@ -49,7 +72,103 @@ class HardwareImuBackend final : public ImuBackend {
   }
 
  private:
+  static lsm6ds3::Lsm6ds3Spi::AccelOdr parse_accel_odr(const std::string& raw) {
+    const std::string v = normalize_token(raw);
+    if (v == "powerdown" || v == "off" || v == "0" || v == "0hz") {
+      return lsm6ds3::Lsm6ds3Spi::AccelOdr::PowerDown;
+    }
+    if (v == "12.5" || v == "12.5hz" || v == "12p5hz" || v == "125hz") {
+      return lsm6ds3::Lsm6ds3Spi::AccelOdr::Hz12_5;
+    }
+    if (v == "26" || v == "26hz") {
+      return lsm6ds3::Lsm6ds3Spi::AccelOdr::Hz26;
+    }
+    if (v == "52" || v == "52hz") {
+      return lsm6ds3::Lsm6ds3Spi::AccelOdr::Hz52;
+    }
+    if (v == "104" || v == "104hz") {
+      return lsm6ds3::Lsm6ds3Spi::AccelOdr::Hz104;
+    }
+    if (v == "208" || v == "208hz") {
+      return lsm6ds3::Lsm6ds3Spi::AccelOdr::Hz208;
+    }
+    if (v == "416" || v == "416hz") {
+      return lsm6ds3::Lsm6ds3Spi::AccelOdr::Hz416;
+    }
+    if (v == "833" || v == "833hz") {
+      return lsm6ds3::Lsm6ds3Spi::AccelOdr::Hz833;
+    }
+    throw std::runtime_error("Invalid imu.accel_odr: '" + raw +
+                             "' (expected power_down|12.5hz|26hz|52hz|104hz|208hz|416hz|833hz)");
+  }
+
+  static lsm6ds3::Lsm6ds3Spi::GyroOdr parse_gyro_odr(const std::string& raw) {
+    const std::string v = normalize_token(raw);
+    if (v == "powerdown" || v == "off" || v == "0" || v == "0hz") {
+      return lsm6ds3::Lsm6ds3Spi::GyroOdr::PowerDown;
+    }
+    if (v == "12.5" || v == "12.5hz" || v == "12p5hz" || v == "125hz") {
+      return lsm6ds3::Lsm6ds3Spi::GyroOdr::Hz12_5;
+    }
+    if (v == "26" || v == "26hz") {
+      return lsm6ds3::Lsm6ds3Spi::GyroOdr::Hz26;
+    }
+    if (v == "52" || v == "52hz") {
+      return lsm6ds3::Lsm6ds3Spi::GyroOdr::Hz52;
+    }
+    if (v == "104" || v == "104hz") {
+      return lsm6ds3::Lsm6ds3Spi::GyroOdr::Hz104;
+    }
+    if (v == "208" || v == "208hz") {
+      return lsm6ds3::Lsm6ds3Spi::GyroOdr::Hz208;
+    }
+    if (v == "416" || v == "416hz") {
+      return lsm6ds3::Lsm6ds3Spi::GyroOdr::Hz416;
+    }
+    if (v == "833" || v == "833hz") {
+      return lsm6ds3::Lsm6ds3Spi::GyroOdr::Hz833;
+    }
+    throw std::runtime_error("Invalid imu.gyro_odr: '" + raw +
+                             "' (expected power_down|12.5hz|26hz|52hz|104hz|208hz|416hz|833hz)");
+  }
+
+  static lsm6ds3::Lsm6ds3Spi::AccelScale parse_accel_scale(const std::string& raw) {
+    const std::string v = normalize_token(raw);
+    if (v == "2g" || v == "2") {
+      return lsm6ds3::Lsm6ds3Spi::AccelScale::G2;
+    }
+    if (v == "4g" || v == "4") {
+      return lsm6ds3::Lsm6ds3Spi::AccelScale::G4;
+    }
+    if (v == "8g" || v == "8") {
+      return lsm6ds3::Lsm6ds3Spi::AccelScale::G8;
+    }
+    if (v == "16g" || v == "16") {
+      return lsm6ds3::Lsm6ds3Spi::AccelScale::G16;
+    }
+    throw std::runtime_error("Invalid imu.accel_scale: '" + raw + "' (expected 2g|4g|8g|16g)");
+  }
+
+  static lsm6ds3::Lsm6ds3Spi::GyroScale parse_gyro_scale(const std::string& raw) {
+    const std::string v = normalize_token(raw);
+    if (v == "245dps" || v == "245") {
+      return lsm6ds3::Lsm6ds3Spi::GyroScale::Dps245;
+    }
+    if (v == "500dps" || v == "500") {
+      return lsm6ds3::Lsm6ds3Spi::GyroScale::Dps500;
+    }
+    if (v == "1000dps" || v == "1000") {
+      return lsm6ds3::Lsm6ds3Spi::GyroScale::Dps1000;
+    }
+    if (v == "2000dps" || v == "2000") {
+      return lsm6ds3::Lsm6ds3Spi::GyroScale::Dps2000;
+    }
+    throw std::runtime_error("Invalid imu.gyro_scale: '" + raw +
+                             "' (expected 245dps|500dps|1000dps|2000dps)");
+  }
+
   lsm6ds3::Lsm6ds3Spi sensor_;
+  RuntimeConfig cfg_;
 };
 #else
 class HardwareImuBackend final : public ImuBackend {

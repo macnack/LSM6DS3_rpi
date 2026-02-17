@@ -80,6 +80,7 @@ struct RuntimeStats {
   ActuatorHealth actuator_health{};
   uint64_t control_ticks = 0;
   uint64_t actuator_ticks = 0;
+  uint64_t igniter_ticks = 0;
   uint64_t imu_ticks = 0;
   uint64_t i2c_ticks = 0;
   uint64_t estimator_ticks = 0;
@@ -88,6 +89,8 @@ struct RuntimeStats {
   uint64_t external_estimator_reject_count = 0;
   uint64_t external_controller_accept_count = 0;
   uint64_t external_controller_reject_count = 0;
+  uint64_t igniter_command_accept_count = 0;
+  uint64_t igniter_command_reject_count = 0;
 
   uint64_t failsafe_activation_count = 0;
   uint64_t failsafe_enter_count = 0;
@@ -127,9 +130,21 @@ struct RuntimeStats {
   uint64_t actuator_cmd_age_max_ns = 0;
 
   uint64_t i2c_recovery_count = 0;
+  uint64_t imu_watchdog_fault_count = 0;
+  uint64_t imu_watchdog_zero_vector_count = 0;
+  uint64_t imu_watchdog_flatline_count = 0;
+  uint64_t imu_watchdog_degenerate_pattern_count = 0;
+  uint64_t imu_reinit_attempt_count = 0;
+  uint64_t imu_reinit_success_count = 0;
+  uint64_t imu_reinit_failure_count = 0;
+  uint32_t imu_last_fault_reason = 0;
+  uint32_t imu_watchdog_state = 0;
 
   bool killswitch_active = false;
   uint64_t killswitch_trip_count = 0;
+  bool igniter_armed = false;
+  bool igniter_global_fault_latched = false;
+  uint8_t igniter_active_mask = 0;
 
   // sim_net bridge
   uint64_t sim_net_sensor_frames = 0;

@@ -170,6 +170,12 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   std::unordered_set<std::string> allowed_sections = required_sections;
   allowed_sections.insert("killswitch");
   allowed_sections.insert("sim_net");
+  allowed_sections.insert("imu_watchdog");
+  allowed_sections.insert("igniter");
+  allowed_sections.insert("igniter0");
+  allowed_sections.insert("igniter1");
+  allowed_sections.insert("igniter2");
+  allowed_sections.insert("igniter3");
 
   validate_allowed_sections(doc, allowed_sections);
 
@@ -203,17 +209,21 @@ RuntimeConfig load_runtime_config(const std::string& path) {
 
   const auto& threads = require_section(doc, "threads");
   validate_allowed_keys(threads,
-                        {"control_hz", "actuator_hz", "imu_hz", "estimator_hz", "baro_hz", "control_priority",
-                         "actuator_priority", "imu_priority", "estimator_priority", "i2c_priority", "control_cpu",
-                         "imu_cpu"},
+                        {"control_hz", "actuator_hz", "igniter_hz", "imu_hz", "estimator_hz", "baro_hz",
+                         "control_priority", "actuator_priority", "igniter_priority", "imu_priority",
+                         "estimator_priority", "i2c_priority", "control_cpu", "imu_cpu"},
                         "threads");
   maybe_apply(threads, "control_hz", [&](const TomlValue& v) { cfg.threads.control_hz = as_u32(v, "threads.control_hz"); });
   maybe_apply(threads, "actuator_hz", [&](const TomlValue& v) { cfg.threads.actuator_hz = as_u32(v, "threads.actuator_hz"); });
+  maybe_apply(threads, "igniter_hz", [&](const TomlValue& v) { cfg.threads.igniter_hz = as_u32(v, "threads.igniter_hz"); });
   maybe_apply(threads, "imu_hz", [&](const TomlValue& v) { cfg.threads.imu_hz = as_u32(v, "threads.imu_hz"); });
   maybe_apply(threads, "estimator_hz", [&](const TomlValue& v) { cfg.threads.estimator_hz = as_u32(v, "threads.estimator_hz"); });
   maybe_apply(threads, "baro_hz", [&](const TomlValue& v) { cfg.threads.baro_hz = as_u32(v, "threads.baro_hz"); });
   maybe_apply(threads, "control_priority", [&](const TomlValue& v) { cfg.threads.control_priority = as_i32(v, "threads.control_priority"); });
   maybe_apply(threads, "actuator_priority", [&](const TomlValue& v) { cfg.threads.actuator_priority = as_i32(v, "threads.actuator_priority"); });
+  maybe_apply(threads, "igniter_priority", [&](const TomlValue& v) {
+    cfg.threads.igniter_priority = as_i32(v, "threads.igniter_priority");
+  });
   maybe_apply(threads, "imu_priority", [&](const TomlValue& v) { cfg.threads.imu_priority = as_i32(v, "threads.imu_priority"); });
   maybe_apply(threads, "estimator_priority", [&](const TomlValue& v) { cfg.threads.estimator_priority = as_i32(v, "threads.estimator_priority"); });
   maybe_apply(threads, "i2c_priority", [&](const TomlValue& v) { cfg.threads.i2c_priority = as_i32(v, "threads.i2c_priority"); });
@@ -274,10 +284,51 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   });
 
   const auto& imu = require_section(doc, "imu");
-  validate_allowed_keys(imu, {"spi_device", "spi_speed_hz", "spi_mode"}, "imu");
+  validate_allowed_keys(imu, {"spi_device", "spi_speed_hz", "spi_mode", "accel_odr", "gyro_odr",
+                              "accel_scale", "gyro_scale"},
+                        "imu");
   maybe_apply(imu, "spi_device", [&](const TomlValue& v) { cfg.imu.spi_device = as_string(v, "imu.spi_device"); });
   maybe_apply(imu, "spi_speed_hz", [&](const TomlValue& v) { cfg.imu.spi_speed_hz = as_u32(v, "imu.spi_speed_hz"); });
   maybe_apply(imu, "spi_mode", [&](const TomlValue& v) { cfg.imu.spi_mode = as_u32(v, "imu.spi_mode"); });
+  maybe_apply(imu, "accel_odr", [&](const TomlValue& v) { cfg.imu.accel_odr = as_string(v, "imu.accel_odr"); });
+  maybe_apply(imu, "gyro_odr", [&](const TomlValue& v) { cfg.imu.gyro_odr = as_string(v, "imu.gyro_odr"); });
+  maybe_apply(imu, "accel_scale",
+              [&](const TomlValue& v) { cfg.imu.accel_scale = as_string(v, "imu.accel_scale"); });
+  maybe_apply(imu, "gyro_scale", [&](const TomlValue& v) { cfg.imu.gyro_scale = as_string(v, "imu.gyro_scale"); });
+
+  const auto imu_watchdog_it = doc.find("imu_watchdog");
+  if (imu_watchdog_it != doc.end()) {
+    const auto& imu_watchdog = imu_watchdog_it->second;
+    validate_allowed_keys(imu_watchdog,
+                          {"enabled", "zero_vector_consecutive", "flatline_consecutive",
+                           "degenerate_pattern_consecutive", "flatline_epsilon",
+                           "healthy_recovery_samples", "recovery_backoff_ms", "max_reinit_attempts"},
+                          "imu_watchdog");
+    maybe_apply(imu_watchdog, "enabled",
+                [&](const TomlValue& v) { cfg.imu_watchdog.enabled = as_bool(v, "imu_watchdog.enabled"); });
+    maybe_apply(imu_watchdog, "zero_vector_consecutive", [&](const TomlValue& v) {
+      cfg.imu_watchdog.zero_vector_consecutive = as_u32(v, "imu_watchdog.zero_vector_consecutive");
+    });
+    maybe_apply(imu_watchdog, "flatline_consecutive", [&](const TomlValue& v) {
+      cfg.imu_watchdog.flatline_consecutive = as_u32(v, "imu_watchdog.flatline_consecutive");
+    });
+    maybe_apply(imu_watchdog, "degenerate_pattern_consecutive", [&](const TomlValue& v) {
+      cfg.imu_watchdog.degenerate_pattern_consecutive =
+          as_u32(v, "imu_watchdog.degenerate_pattern_consecutive");
+    });
+    maybe_apply(imu_watchdog, "flatline_epsilon", [&](const TomlValue& v) {
+      cfg.imu_watchdog.flatline_epsilon = as_double(v, "imu_watchdog.flatline_epsilon");
+    });
+    maybe_apply(imu_watchdog, "healthy_recovery_samples", [&](const TomlValue& v) {
+      cfg.imu_watchdog.healthy_recovery_samples = as_u32(v, "imu_watchdog.healthy_recovery_samples");
+    });
+    maybe_apply(imu_watchdog, "recovery_backoff_ms", [&](const TomlValue& v) {
+      cfg.imu_watchdog.recovery_backoff_ms = as_u32(v, "imu_watchdog.recovery_backoff_ms");
+    });
+    maybe_apply(imu_watchdog, "max_reinit_attempts", [&](const TomlValue& v) {
+      cfg.imu_watchdog.max_reinit_attempts = as_u32(v, "imu_watchdog.max_reinit_attempts");
+    });
+  }
 
   const auto& baro = require_section(doc, "baro");
   validate_allowed_keys(baro, {"i2c_bus", "i2c_address", "recovery_error_threshold", "recovery_backoff_ms"},
@@ -327,6 +378,49 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   maybe_apply(actuator, "slew_limit_norm_per_sec", [&](const TomlValue& v) {
     cfg.actuator.slew_limit_norm_per_sec = as_double(v, "actuator.slew_limit_norm_per_sec");
   });
+
+  const auto igniter_it = doc.find("igniter");
+  if (igniter_it != doc.end()) {
+    const auto& igniter = igniter_it->second;
+    validate_allowed_keys(igniter,
+                          {"enabled", "use_hardware", "fault_policy", "settle_ms", "latch_faults",
+                           "default_fire_ms", "max_fire_ms", "command_shm", "status_shm"},
+                          "igniter");
+    maybe_apply(igniter, "enabled", [&](const TomlValue& v) { cfg.igniter.enabled = as_bool(v, "igniter.enabled"); });
+    maybe_apply(igniter, "use_hardware",
+                [&](const TomlValue& v) { cfg.igniter.use_hardware = as_bool(v, "igniter.use_hardware"); });
+    maybe_apply(igniter, "fault_policy",
+                [&](const TomlValue& v) { cfg.igniter.fault_policy = as_string(v, "igniter.fault_policy"); });
+    maybe_apply(igniter, "settle_ms", [&](const TomlValue& v) { cfg.igniter.settle_ms = as_u32(v, "igniter.settle_ms"); });
+    maybe_apply(igniter, "latch_faults",
+                [&](const TomlValue& v) { cfg.igniter.latch_faults = as_bool(v, "igniter.latch_faults"); });
+    maybe_apply(igniter, "default_fire_ms", [&](const TomlValue& v) {
+      cfg.igniter.default_fire_ms = as_u32(v, "igniter.default_fire_ms");
+    });
+    maybe_apply(igniter, "max_fire_ms",
+                [&](const TomlValue& v) { cfg.igniter.max_fire_ms = as_u32(v, "igniter.max_fire_ms"); });
+    maybe_apply(igniter, "command_shm",
+                [&](const TomlValue& v) { cfg.igniter.command_shm = as_string(v, "igniter.command_shm"); });
+    maybe_apply(igniter, "status_shm",
+                [&](const TomlValue& v) { cfg.igniter.status_shm = as_string(v, "igniter.status_shm"); });
+  }
+
+  for (std::size_t i = 0; i < cfg.igniter_channels.size(); ++i) {
+    const std::string sec_name = "igniter" + std::to_string(i);
+    const auto sec_it = doc.find(sec_name);
+    if (sec_it == doc.end()) {
+      continue;
+    }
+    const auto& sec = sec_it->second;
+    validate_allowed_keys(sec, {"enabled", "input_chip", "input_line", "status_chip", "status_line"}, sec_name);
+    auto& out = cfg.igniter_channels[i];
+    maybe_apply(sec, "enabled", [&](const TomlValue& v) { out.enabled = as_bool(v, sec_name + ".enabled"); });
+    maybe_apply(sec, "input_chip", [&](const TomlValue& v) { out.input_chip = as_string(v, sec_name + ".input_chip"); });
+    maybe_apply(sec, "input_line", [&](const TomlValue& v) { out.input_line = as_u32(v, sec_name + ".input_line"); });
+    maybe_apply(sec, "status_chip",
+                [&](const TomlValue& v) { out.status_chip = as_string(v, sec_name + ".status_chip"); });
+    maybe_apply(sec, "status_line", [&](const TomlValue& v) { out.status_line = as_u32(v, sec_name + ".status_line"); });
+  }
 
   for (std::size_t i = 0; i < cfg.servos.size(); ++i) {
     const std::string sec_name = "servo" + std::to_string(i);
@@ -422,6 +516,77 @@ RuntimeConfig load_runtime_config(const std::string& path) {
   if (cfg.timeouts.max_consecutive_baro_failures == 0) {
     throw std::runtime_error("timeouts.max_consecutive_baro_failures must be >= 1");
   }
+  if (cfg.threads.igniter_hz == 0) {
+    throw std::runtime_error("threads.igniter_hz must be >= 1");
+  }
+  if (cfg.imu_watchdog.zero_vector_consecutive == 0) {
+    throw std::runtime_error("imu_watchdog.zero_vector_consecutive must be >= 1");
+  }
+  if (cfg.imu_watchdog.flatline_consecutive == 0) {
+    throw std::runtime_error("imu_watchdog.flatline_consecutive must be >= 1");
+  }
+  if (cfg.imu_watchdog.degenerate_pattern_consecutive == 0) {
+    throw std::runtime_error("imu_watchdog.degenerate_pattern_consecutive must be >= 1");
+  }
+  if (!std::isfinite(cfg.imu_watchdog.flatline_epsilon) || cfg.imu_watchdog.flatline_epsilon <= 0.0) {
+    throw std::runtime_error("imu_watchdog.flatline_epsilon must be > 0");
+  }
+  if (cfg.imu_watchdog.healthy_recovery_samples == 0) {
+    throw std::runtime_error("imu_watchdog.healthy_recovery_samples must be >= 1");
+  }
+  if (cfg.imu_watchdog.recovery_backoff_ms == 0) {
+    throw std::runtime_error("imu_watchdog.recovery_backoff_ms must be >= 1");
+  }
+  if (cfg.igniter.settle_ms == 0) {
+    throw std::runtime_error("igniter.settle_ms must be >= 1");
+  }
+  if (cfg.igniter.default_fire_ms == 0) {
+    throw std::runtime_error("igniter.default_fire_ms must be >= 1");
+  }
+  if (cfg.igniter.max_fire_ms == 0) {
+    throw std::runtime_error("igniter.max_fire_ms must be >= 1");
+  }
+  if (cfg.igniter.default_fire_ms > cfg.igniter.max_fire_ms) {
+    throw std::runtime_error("igniter.default_fire_ms must be <= igniter.max_fire_ms");
+  }
+  if (cfg.igniter.fault_policy != "global" && cfg.igniter.fault_policy != "isolated") {
+    throw std::runtime_error("igniter.fault_policy must be one of: global | isolated");
+  }
+  if (cfg.igniter.enabled) {
+    std::string input_chip;
+    std::string status_chip;
+    std::unordered_set<uint32_t> input_lines;
+    std::unordered_set<uint32_t> status_lines;
+    for (std::size_t i = 0; i < cfg.igniter_channels.size(); ++i) {
+      const auto& ch = cfg.igniter_channels[i];
+      if (!ch.enabled) {
+        throw std::runtime_error("igniter.enabled=true requires igniter" + std::to_string(i) +
+                                 ".enabled=true for all channels");
+      }
+      if (ch.input_chip.empty()) {
+        throw std::runtime_error("igniter" + std::to_string(i) + ".input_chip must not be empty");
+      }
+      if (ch.status_chip.empty()) {
+        throw std::runtime_error("igniter" + std::to_string(i) + ".status_chip must not be empty");
+      }
+      if (input_chip.empty()) {
+        input_chip = ch.input_chip;
+      } else if (input_chip != ch.input_chip) {
+        throw std::runtime_error("All igniter input lines must be on the same gpiochip");
+      }
+      if (status_chip.empty()) {
+        status_chip = ch.status_chip;
+      } else if (status_chip != ch.status_chip) {
+        throw std::runtime_error("All igniter status lines must be on the same gpiochip");
+      }
+      if (!input_lines.insert(ch.input_line).second) {
+        throw std::runtime_error("Igniter input lines must be unique across channels");
+      }
+      if (!status_lines.insert(ch.status_line).second) {
+        throw std::runtime_error("Igniter status lines must be unique across channels");
+      }
+    }
+  }
   if (cfg.security.require_loopback_sim_net && cfg.sim_net.enabled) {
     const bool sensor_loopback = (cfg.sim_net.sensor_host == "127.0.0.1");
     const bool actuator_loopback = (cfg.sim_net.actuator_bind_host == "127.0.0.1");
@@ -454,8 +619,9 @@ std::string runtime_config_to_string(const RuntimeConfig& cfg) {
 
   oss << "[threads]\n";
   oss << "control_hz=" << cfg.threads.control_hz << ", actuator_hz=" << cfg.threads.actuator_hz
-      << ", imu_hz=" << cfg.threads.imu_hz << ", estimator_hz=" << cfg.threads.estimator_hz
-      << ", baro_hz=" << cfg.threads.baro_hz << "\n";
+      << ", igniter_hz=" << cfg.threads.igniter_hz << ", imu_hz=" << cfg.threads.imu_hz
+      << ", estimator_hz=" << cfg.threads.estimator_hz << ", baro_hz=" << cfg.threads.baro_hz
+      << "\n";
 
   oss << "[ipc]\n";
   oss << "sensor_snapshot_shm=" << cfg.ipc.sensor_snapshot_shm << "\n";
@@ -465,6 +631,25 @@ std::string runtime_config_to_string(const RuntimeConfig& cfg) {
   oss << "[security]\n";
   oss << "require_local_ipc_permissions=" << (cfg.security.require_local_ipc_permissions ? "true" : "false") << "\n";
   oss << "require_loopback_sim_net=" << (cfg.security.require_loopback_sim_net ? "true" : "false") << "\n";
+
+  oss << "[imu]\n";
+  oss << "spi_device=" << cfg.imu.spi_device << "\n";
+  oss << "spi_speed_hz=" << cfg.imu.spi_speed_hz << "\n";
+  oss << "spi_mode=" << cfg.imu.spi_mode << "\n";
+  oss << "accel_odr=" << cfg.imu.accel_odr << "\n";
+  oss << "gyro_odr=" << cfg.imu.gyro_odr << "\n";
+  oss << "accel_scale=" << cfg.imu.accel_scale << "\n";
+  oss << "gyro_scale=" << cfg.imu.gyro_scale << "\n";
+
+  oss << "[imu_watchdog]\n";
+  oss << "enabled=" << (cfg.imu_watchdog.enabled ? "true" : "false") << "\n";
+  oss << "zero_vector_consecutive=" << cfg.imu_watchdog.zero_vector_consecutive << "\n";
+  oss << "flatline_consecutive=" << cfg.imu_watchdog.flatline_consecutive << "\n";
+  oss << "degenerate_pattern_consecutive=" << cfg.imu_watchdog.degenerate_pattern_consecutive << "\n";
+  oss << "flatline_epsilon=" << cfg.imu_watchdog.flatline_epsilon << "\n";
+  oss << "healthy_recovery_samples=" << cfg.imu_watchdog.healthy_recovery_samples << "\n";
+  oss << "recovery_backoff_ms=" << cfg.imu_watchdog.recovery_backoff_ms << "\n";
+  oss << "max_reinit_attempts=" << cfg.imu_watchdog.max_reinit_attempts << "\n";
 
   oss << "[baro]\n";
   oss << "recovery_error_threshold=" << cfg.baro.recovery_error_threshold << "\n";
@@ -476,6 +661,24 @@ std::string runtime_config_to_string(const RuntimeConfig& cfg) {
   oss << "nc_closed_value=" << cfg.killswitch.nc_closed_value << "\n";
   oss << "debounce_samples=" << cfg.killswitch.debounce_samples << "\n";
   oss << "latch_on_trip=" << (cfg.killswitch.latch_on_trip ? "true" : "false") << "\n";
+
+  oss << "[igniter]\n";
+  oss << "enabled=" << (cfg.igniter.enabled ? "true" : "false") << "\n";
+  oss << "use_hardware=" << (cfg.igniter.use_hardware ? "true" : "false") << "\n";
+  oss << "fault_policy=" << cfg.igniter.fault_policy << "\n";
+  oss << "settle_ms=" << cfg.igniter.settle_ms << "\n";
+  oss << "latch_faults=" << (cfg.igniter.latch_faults ? "true" : "false") << "\n";
+  oss << "default_fire_ms=" << cfg.igniter.default_fire_ms << "\n";
+  oss << "max_fire_ms=" << cfg.igniter.max_fire_ms << "\n";
+  oss << "command_shm=" << cfg.igniter.command_shm << "\n";
+  oss << "status_shm=" << cfg.igniter.status_shm << "\n";
+
+  for (std::size_t i = 0; i < cfg.igniter_channels.size(); ++i) {
+    const auto& ch = cfg.igniter_channels[i];
+    oss << "[igniter" << i << "] enabled=" << (ch.enabled ? "true" : "false")
+        << " input_chip=" << ch.input_chip << " input_line=" << ch.input_line
+        << " status_chip=" << ch.status_chip << " status_line=" << ch.status_line << "\n";
+  }
 
   for (std::size_t i = 0; i < cfg.servos.size(); ++i) {
     const auto& s = cfg.servos[i];

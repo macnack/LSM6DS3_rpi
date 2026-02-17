@@ -8,3 +8,6 @@ MAIN_PROGRAM_PLAN.md
 rpi_config/
 .github/
 __pycache__/
+CHANGELOG.md
+DFRobot_ADS1115/
+dummy_rocket_sim/

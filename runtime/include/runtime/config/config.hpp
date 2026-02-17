@@ -25,12 +25,14 @@ struct ModesSection {
 struct ThreadsSection {
   uint32_t control_hz = 250;
   uint32_t actuator_hz = 50;
+  uint32_t igniter_hz = 250;
   uint32_t imu_hz = 500;
   uint32_t estimator_hz = 250;
   uint32_t baro_hz = 20;
 
   int control_priority = 90;
   int actuator_priority = 85;
+  int igniter_priority = 82;
   int imu_priority = 80;
   int estimator_priority = 60;
   int i2c_priority = 50;
@@ -68,6 +70,21 @@ struct ImuSection {
   std::string spi_device = "/dev/spidev0.0";
   uint32_t spi_speed_hz = 5'000'000;
   uint32_t spi_mode = 3;
+  std::string accel_odr = "104hz";
+  std::string gyro_odr = "104hz";
+  std::string accel_scale = "2g";
+  std::string gyro_scale = "245dps";
+};
+
+struct ImuWatchdogSection {
+  bool enabled = true;
+  uint32_t zero_vector_consecutive = 3;
+  uint32_t flatline_consecutive = 20;
+  uint32_t degenerate_pattern_consecutive = 20;
+  double flatline_epsilon = 1e-6;
+  uint32_t healthy_recovery_samples = 50;
+  uint32_t recovery_backoff_ms = 100;
+  uint32_t max_reinit_attempts = 0;  // 0 = unlimited
 };
 
 struct BaroSection {
@@ -107,6 +124,26 @@ struct ActuatorSection {
   double slew_limit_norm_per_sec = 4.0;
 };
 
+struct IgniterSection {
+  bool enabled = false;
+  bool use_hardware = false;
+  std::string fault_policy = "global";
+  uint32_t settle_ms = 5;
+  bool latch_faults = true;
+  uint32_t default_fire_ms = 200;
+  uint32_t max_fire_ms = 2000;
+  std::string command_shm = "/rt_igniter_command_v1";
+  std::string status_shm = "/rt_igniter_status_v1";
+};
+
+struct IgniterChannelSection {
+  bool enabled = false;
+  std::string input_chip = "/dev/gpiochip0";
+  uint32_t input_line = 0;
+  std::string status_chip = "/dev/gpiochip0";
+  uint32_t status_line = 0;
+};
+
 struct EstimatorCppSection {
   double accel_complementary_gain = 0.02;
   double baro_alt_gain = 0.1;
@@ -136,9 +173,12 @@ struct RuntimeConfig {
   SecuritySection security;
   IpcSection ipc;
   ImuSection imu;
+  ImuWatchdogSection imu_watchdog;
   BaroSection baro;
   KillSwitchSection killswitch;
   ActuatorSection actuator;
+  IgniterSection igniter;
+  std::array<IgniterChannelSection, kIgniterCount> igniter_channels{};
   std::array<ServoSection, kServoCount> servos{};
   EstimatorCppSection estimator_cpp;
   ControllerCppSection controller_cpp;

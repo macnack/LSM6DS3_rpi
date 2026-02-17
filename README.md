@@ -1,10 +1,13 @@
-# Raspberry Pi IMU + BARO + SERVO Superbuild
+# Raspberry Pi IMU + BARO + SERVO + ADC + IGNITER + BUZZER Superbuild
 
 This repository contains:
 
 - `IMU/`: LSM6DS3-family IMU library (I2C + SPI).
 - `BARO/`: BMP390 barometer library (I2C).
 - `SERVO/`: Hardware PWM servo library (Raspberry Pi 5 Linux).
+- `ADC/`: ADS1115 ADC library (I2C).
+- `IGNITER/`: VN5E160S + Igniter + IgniterBank (4-channel synchronized ignition).
+- `BUZZER/`: LPB2418A-style buzzer library (libgpiod, event/alarm patterns).
 - `runtime/`: RT core runtime (`rt_core`) with workers, IPC, fallback policies, and tests.
 
 Each subproject can be built independently, or you can build all enabled modules at once from the repo root.
@@ -14,7 +17,7 @@ Each subproject can be built independently, or you can build all enabled modules
 From the repository root:
 
 ```bash
-cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=OFF -DBMP390_BUILD_PYTHON=OFF -DSERVO_BUILD_PYTHON=OFF
+cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=OFF -DBMP390_BUILD_PYTHON=OFF -DSERVO_BUILD_PYTHON=OFF -DADS1115_BUILD_PYTHON=OFF -DIGNITER_BUILD_PYTHON=OFF -DBUZZER_BUILD_PYTHON=OFF
 cmake --build build -j
 ```
 
@@ -24,6 +27,9 @@ Executables will be in `build/`, for example:
 - `build/lsm6ds3_read_once_spi`
 - `build/bmp390_read_once`
 - `build/servo_set_pulse`
+- `build/ads1115_read_once`
+- `build/igniter_bank_demo`
+- `build/buzzer_play_profile`
 
 ## Build Runtime
 
@@ -34,7 +40,10 @@ cmake -S . -B build \
   -DBUILD_RUNTIME=ON \
   -DLSM6DS3_BUILD_PYTHON=OFF \
   -DBMP390_BUILD_PYTHON=OFF \
-  -DSERVO_BUILD_PYTHON=OFF
+  -DSERVO_BUILD_PYTHON=OFF \
+  -DADS1115_BUILD_PYTHON=OFF \
+  -DIGNITER_BUILD_PYTHON=OFF \
+  -DBUZZER_BUILD_PYTHON=OFF
 cmake --build build -j
 ```
 
@@ -48,7 +57,10 @@ cmake -S . -B build \
   -DBUILD_SERVO=ON \
   -DLSM6DS3_BUILD_PYTHON=OFF \
   -DBMP390_BUILD_PYTHON=OFF \
-  -DSERVO_BUILD_PYTHON=OFF
+  -DSERVO_BUILD_PYTHON=OFF \
+  -DADS1115_BUILD_PYTHON=OFF \
+  -DIGNITER_BUILD_PYTHON=OFF \
+  -DBUZZER_BUILD_PYTHON=OFF
 cmake --build build -j
 ```
 
@@ -62,6 +74,25 @@ Runtime development configs:
 
 - `runtime/config/rt_core_sim_python_dev.toml` (Python dummy workers)
 - `runtime/config/rt_core_sim_cpp_dev.toml` (C++ dummy workers)
+
+## Runtime Shortcuts
+
+Use `rt.sh` from repo root to standardize build/run flows:
+
+```bash
+./rt.sh build
+./rt.sh run native
+./rt.sh run sim-py
+./rt.sh run-estimator sim-py
+./rt.sh run-controller sim-py
+```
+
+Discover all presets and options:
+
+```bash
+./rt.sh help
+./rt.sh paths
+```
 
 ## Build Only One
 
@@ -86,12 +117,33 @@ cmake -S . -B build -DBUILD_IMU=OFF -DBUILD_BARO=OFF -DBUILD_SERVO=ON
 cmake --build build -j
 ```
 
+ADC only:
+
+```bash
+cmake -S . -B build -DBUILD_IMU=OFF -DBUILD_BARO=OFF -DBUILD_SERVO=OFF -DBUILD_ADC=ON
+cmake --build build -j
+```
+
+BUZZER only:
+
+```bash
+cmake -S . -B build -DBUILD_IMU=OFF -DBUILD_BARO=OFF -DBUILD_SERVO=OFF -DBUILD_ADC=OFF -DBUILD_BUZZER=ON
+cmake --build build -j
+```
+
+IGNITER only:
+
+```bash
+cmake -S . -B build -DBUILD_IMU=OFF -DBUILD_BARO=OFF -DBUILD_SERVO=OFF -DBUILD_ADC=OFF -DBUILD_IGNITER=ON -DBUILD_BUZZER=OFF
+cmake --build build -j
+```
+
 ## Python Modules (Optional)
 
 If you want the Python modules at the root build, enable them explicitly and make sure `pybind11` is available in your environment:
 
 ```bash
-cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=ON -DBMP390_BUILD_PYTHON=ON -DSERVO_BUILD_PYTHON=ON
+cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=ON -DBMP390_BUILD_PYTHON=ON -DSERVO_BUILD_PYTHON=ON -DADS1115_BUILD_PYTHON=ON -DIGNITER_BUILD_PYTHON=ON -DBUZZER_BUILD_PYTHON=ON
 cmake --build build -j
 ```
 
@@ -111,6 +163,10 @@ python -m pip install dist/lsm6ds3_rpi-*.whl
 cd ../BARO
 python -m build
 python -m pip install dist/bmp390_rpi-*.whl
+
+cd ../ADC
+python -m build
+python -m pip install dist/ADS1115_rpi-*.whl
 ```
 
 If you want to interact with the runtime helpers (including `rt-status-report`), install the repo in editable mode before running those tools:
@@ -130,7 +186,7 @@ Each script accepts `--duration-sec` if you want to stop after a fixed runtime, 
 
 ### One-Command Root Build (emits all wheels)
 
-The root `pyproject.toml` includes a custom build hook that runs `python -m build` in `IMU/`, `BARO/`, and `SERVO/` and places all wheels into the root `dist/` folder. It also creates a small `rpi_sensors` wheel (metadata only).
+The root `pyproject.toml` includes a custom build hook that runs `python -m build` in `IMU/`, `BARO/`, `SERVO/`, `ADC/`, `IGNITER/`, and `BUZZER/` and places all wheels into the root `dist/` folder. It also creates a small `rpi_sensors` wheel (metadata only).
 
 ```bash
 python3.13 -m venv .venv
@@ -145,10 +201,16 @@ Outputs in `dist/`:
 - `lsm6ds3_rpi-*.whl`
 - `bmp390_rpi-*.whl`
 - `servo_rpi-*.whl`
+- `ADS1115_rpi-*.whl`
+- `igniter_rpi-*.whl`
+- `buzzer_rpi-*.whl`
 
 For more Python packaging and runtime usage details, see:
 
 - `IMU/README.md`
 - `BARO/README.md`
 - `SERVO/README.md`
+- `ADC/README.md`
+- `IGNITER/README.md`
+- `BUZZER/README.md`
 - `runtime/README.md`

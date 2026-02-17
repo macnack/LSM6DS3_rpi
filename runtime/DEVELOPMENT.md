@@ -50,6 +50,7 @@ Current workers:
 
 - `control_worker`
 - `actuator_worker`
+- `igniter_worker`
 - `imu_worker`
 - `i2c_hub_worker`
 - `estimator_worker`
@@ -138,6 +139,45 @@ Right now only `baro` is registered. To add a new I2C device:
 5. In `i2c_hub_worker()`, push a new `I2cDeviceJob` with its own period and `poll_once`.
 6. In the job execution block, add per-device error/recovery counters and update `RuntimeStats`.
 7. If needed by external workers, extend `SensorSnapshotMsg` in `runtime/include/runtime/ipc/messages.hpp` and update Python codec/helpers in `runtime/python/ipc_common.py`.
+
+## Igniter Service Notes (Synchronized 4-Channel)
+
+Igniter service uses dedicated IPC messages:
+
+- `IgniterCommandMsg`
+- `IgniterStatusMsg`
+
+Command path is intentionally separate from controller mailbox to keep pyrotechnic control isolated.
+
+### GPIO synchronization requirements
+
+For synchronized firing (`fire_mask`/`fire_all`) with low skew:
+
+1. all igniter INPUT lines must be on one gpiochip
+2. all igniter STATUS lines must be on one gpiochip
+3. each line must be unique
+4. runtime config validation enforces these constraints when `[igniter].enabled=true`
+
+### CM5 / RPi5 chip selection
+
+Do not assume `gpiochip0`.
+
+Recommended workflow:
+
+1. `gpiodetect`
+2. identify chip label `pinctrl-rp1`
+3. `gpioinfo <gpiochipX>`
+4. assign `input_chip` / `status_chip` in `igniter0..3` sections accordingly
+
+### Preflight configuration checklist
+
+Before any live igniter test:
+
+1. confirm config validation passes with `[igniter].enabled=true`
+2. confirm all 4 channels are enabled and unique line offsets are used
+3. confirm `fault_policy`, `settle_ms`, `default_fire_ms`, `max_fire_ms` match test card
+4. run `arm` -> `status` -> `disarm` smoke path over IPC
+5. validate simultaneous `fire_mask` timing on hardware (logic analyzer target: inter-channel skew `<= 1 ms`)
 
 ### Important compatibility note
 
