@@ -90,14 +90,17 @@ cmd_build() {
   case "$preset" in
     runtime)
       cmake -S "$ROOT_DIR" -B "$BUILD_DIR" \
+        -DBUILD_IGNITER=ON \
         -DBUILD_RUNTIME=ON \
         -DLSM6DS3_BUILD_PYTHON=OFF \
         -DBMP390_BUILD_PYTHON=OFF \
         -DSERVO_BUILD_PYTHON=OFF \
+        -DIGNITER_BUILD_PYTHON=OFF \
         -DADS1115_BUILD_PYTHON=OFF
       ;;
     sim)
       cmake -S "$ROOT_DIR" -B "$BUILD_DIR" \
+        -DBUILD_IGNITER=ON \
         -DBUILD_RUNTIME=ON \
         -DBUILD_IMU=OFF \
         -DBUILD_BARO=OFF \
@@ -105,6 +108,7 @@ cmd_build() {
         -DLSM6DS3_BUILD_PYTHON=OFF \
         -DBMP390_BUILD_PYTHON=OFF \
         -DSERVO_BUILD_PYTHON=OFF \
+        -DIGNITER_BUILD_PYTHON=OFF \
         -DADS1115_BUILD_PYTHON=OFF
       ;;
     *)

@@ -15,6 +15,7 @@ Workers in `rt_core`:
 
 - `control_thread` (highest priority): fixed-rate control tick, estimator/controller source selection, publishes actuator command.
 - `actuator_worker`: exclusive owner of 4-servo actuator outputs with clamp, slew, arm/disarm, and failsafe handling.
+- `igniter_worker`: synchronized 4-channel igniter service (`VN5E160S` + latch/fault logic + IPC command/status).
 - `imu_worker`: high-rate IMU sampling (`SPI`) or simulated IMU in sim mode.
 - `i2c_hub_worker`: I2C job registry scheduler (BARO now; extensible for future sensors).
 - `estimator_thread`: C++ native estimator producer (always available as fallback path).
@@ -71,6 +72,8 @@ Mailbox names (defaults):
 - `/rt_sensor_snapshot_v1` (`SensorSnapshotMsg`: RT -> external estimator worker)
 - `/rt_estimator_state_v1` (`ExternalEstimatorStateMsg`: external estimator worker -> RT)
 - `/rt_controller_command_v1` (`ExternalControllerCommandMsg`: external controller worker -> RT)
+- `/rt_igniter_command_v1` (`IgniterCommandMsg`: external client -> RT igniter service)
+- `/rt_igniter_status_v1` (`IgniterStatusMsg`: RT igniter service -> external client)
 
 Message validation:
 
@@ -92,6 +95,7 @@ Optional sections:
 - `[killswitch]` (hardware NC emergency input)
 - `[sim_net]` (TCP bridge mode)
 - `[imu_watchdog]` (invalid-stream detection and IMU auto-reinit)
+- `[igniter]`, `[igniter0]`, `[igniter1]`, `[igniter2]`, `[igniter3]` (4-channel synchronized igniter service)
 
 Important BARO/I2C keys in `[baro]`:
 
@@ -128,6 +132,75 @@ Security keys in `[security]`:
 
 - `require_local_ipc_permissions`: enforce strict mailbox ownership/permissions before IPC opens
 - `require_loopback_sim_net`: require `127.0.0.1` sim TCP endpoints
+
+Igniter keys in `[igniter]`:
+
+- `enabled`: enable igniter worker and IPC service
+- `use_hardware`: use hardware GPIO backend (libgpiod) instead of sim backend
+- `fault_policy`: `global` or `isolated`
+- `settle_ms`: post-switch status filter window
+- `latch_faults`: latch VN5 fault state
+- `default_fire_ms`: fire duration used when duration=0
+- `max_fire_ms`: hard safety cap
+- `command_shm`: igniter command mailbox name
+- `status_shm`: igniter status mailbox name
+
+Igniter channel keys in `[igniter0..3]`:
+
+- `enabled`: channel is managed by igniter worker
+- `input_chip`, `input_line`: VN5 INPUT GPIO chip path + line offset
+- `status_chip`, `status_line`: VN5 STATUS GPIO chip path + line offset
+
+Synchronization constraints:
+
+- when `[igniter].enabled=true`, all `igniter0..3` channels must be enabled
+- all `input_chip` values must be identical (single gpiochip batch write path)
+- all `status_chip` values must be identical
+- input and status lines must be unique per channel
+
+This enforces single-batch group triggering for `fire_mask` / `fire_all`.
+
+## Igniter Service (4 Channels)
+
+`igniter_worker` runs independently from control/actuator workers and handles:
+
+- command IPC (`arm`, `disarm`, `fire_mask`, `clear_fault`)
+- batch output writes for synchronized multi-channel fire
+- per-channel STATUS sampling and fault transitions
+- status IPC publication (state/fault/remaining duration per channel)
+
+If kill switch is active, igniters are forced to disarmed/off state.
+
+## Raspberry Pi 5 / CM5 GPIO Selection Guide
+
+For synchronized igniter channels on CM5/RPi5:
+
+1. detect chips:
+   - `gpiodetect`
+2. identify RP1 user-GPIO chip by label (usually `pinctrl-rp1`)
+3. inspect available lines:
+   - `gpioinfo <gpiochipX>`
+4. choose four INPUT lines and four STATUS lines on the same chip
+5. set `input_chip`/`status_chip` to that chip path (for example `/dev/gpiochip4`)
+
+Do not hardcode `gpiochip0`; resolve by label on the target image.
+
+References:
+
+- https://pip-assets.raspberrypi.com/categories/685-whitepapers-app-notes/documents/RP-006553-WP/A-history-of-GPIO-usage-on-Raspberry-Pi-devices-and-current-best-practices
+- https://libgpiod.readthedocs.io/en/stable/gpioset.html
+- https://www.kernel.org/doc/html/latest/driver-api/gpio/using-gpio.html
+
+## Igniter Preflight Checklist
+
+Before live test/flight with igniters:
+
+1. validate config loads cleanly with `[igniter].enabled=true`
+2. verify all `igniter0..3` channels are enabled and use one `input_chip`
+3. verify all `status_chip` values are identical and all lines are unique
+4. run `arm` then `disarm` command path and confirm status updates in `/rt_igniter_status_v1`
+5. run `fire-mask --mask 0x0F` only with safe load and confirm simultaneous transition on all channels
+6. if any fault is latched, run `clear-fault` and re-check `disarmed` state before re-arming
 
 ## Kill Switch (NC)
 
@@ -174,6 +247,7 @@ No accel-magnitude plausibility check is used by this watchdog.
 Runtime status file now includes:
 
 - deadline misses: control, actuator, imu, baro
+- igniter worker counters (`igniter_ticks`, command accept/reject)
 - jitter percentiles (`p50`, `p95`, `p99`, `max`) for control, actuator, imu, baro scheduling
 - actuator command age (`last`, `max`)
 - `i2c_recovery_count`
@@ -181,6 +255,7 @@ Runtime status file now includes:
 - IMU reinit counters (`imu_reinit_attempt_count`, `imu_reinit_success_count`, `imu_reinit_failure_count`)
 - IMU watchdog state and fault reason (`imu_watchdog_state_name`, `imu_last_fault_reason_name`)
 - kill switch state and trip count
+- igniter state (`igniter_armed`, `igniter_global_fault_latched`, `igniter_active_mask`)
 - external worker accept/reject counters
 - failsafe diagnostics (`failsafe_activation_count`, enter/exit events, per-cause counts)
 - sim_net actuator link diagnostics (`sim_net_actuator_disconnects`, `sim_net_actuator_client_connected`)
@@ -201,7 +276,8 @@ cmake -S . -B build \
   -DBUILD_RUNTIME=ON \
   -DLSM6DS3_BUILD_PYTHON=OFF \
   -DBMP390_BUILD_PYTHON=OFF \
-  -DSERVO_BUILD_PYTHON=OFF
+  -DSERVO_BUILD_PYTHON=OFF \
+  -DIGNITER_BUILD_PYTHON=OFF
 cmake --build build -j
 ```
 
@@ -231,7 +307,8 @@ cmake -S . -B build \
   -DBUILD_SERVO=ON \
   -DLSM6DS3_BUILD_PYTHON=OFF \
   -DBMP390_BUILD_PYTHON=OFF \
-  -DSERVO_BUILD_PYTHON=OFF
+  -DSERVO_BUILD_PYTHON=OFF \
+  -DIGNITER_BUILD_PYTHON=OFF
 cmake --build build -j
 ```
 
@@ -257,6 +334,14 @@ No-hardware end-to-end simulation:
 ./build/runtime/rt_core --config ./runtime/config/rt_core_sim_python_dev.toml
 python3 ./runtime/python/dummy_estimator.py --config ./runtime/config/rt_core_sim_python_dev.toml
 python3 ./runtime/python/dummy_controller.py --config ./runtime/config/rt_core_sim_python_dev.toml
+```
+
+Igniter IPC client examples:
+
+```bash
+python3 ./runtime/python/igniter_cli.py --config ./runtime/config/rt_core_cpp_native.toml arm
+python3 ./runtime/python/igniter_cli.py --config ./runtime/config/rt_core_cpp_native.toml fire-mask --mask 0x0F --d0 200 --d1 200 --d2 200 --d3 200
+python3 ./runtime/python/igniter_cli.py --config ./runtime/config/rt_core_cpp_native.toml status
 ```
 
 C++ development path in separate terminals:
@@ -335,6 +420,7 @@ CTest targets:
 - `runtime_unit_external_time_validation`
 - `runtime_unit_runtime_failsafe_causes`
 - `runtime_unit_sim_net_link`
+- `runtime_unit_igniter_config_validation`
 - `runtime_unit_ipc_codec_cpp_to_python`
 - `runtime_unit_ipc_codec_python_to_cpp`
 - `runtime_unit_python_ipc_codec`

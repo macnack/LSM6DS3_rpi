@@ -59,6 +59,43 @@ struct ExternalControllerCommandMsg {
   uint32_t crc32 = 0;
 };
 
+enum class IgniterCommandAction : uint8_t {
+  None = 0,
+  Arm = 1,
+  Disarm = 2,
+  FireMask = 3,
+  ClearFault = 4,
+};
+
+struct IgniterCommandMsg {
+  uint32_t msg_magic = kMessageMagic;
+  uint16_t msg_version = kMessageVersion;
+  uint16_t payload_bytes = 0;
+  uint64_t seq = 0;
+  uint64_t t_ns = 0;
+  uint8_t action = static_cast<uint8_t>(IgniterCommandAction::None);
+  uint8_t fire_mask = 0;
+  uint8_t reserved0[6] = {0, 0, 0, 0, 0, 0};
+  std::array<uint32_t, kIgniterCount> duration_ms{0, 0, 0, 0};
+  uint32_t crc32 = 0;
+};
+
+struct IgniterStatusMsg {
+  uint32_t msg_magic = kMessageMagic;
+  uint16_t msg_version = kMessageVersion;
+  uint16_t payload_bytes = 0;
+  uint64_t seq = 0;
+  uint64_t t_ns = 0;
+  uint8_t armed = 0;
+  uint8_t global_fault_latched = 0;
+  uint8_t active_mask = 0;
+  uint8_t reserved0[5] = {0, 0, 0, 0, 0};
+  std::array<uint8_t, kIgniterCount> state{0, 0, 0, 0};
+  std::array<uint8_t, kIgniterCount> fault{0, 0, 0, 0};
+  std::array<uint32_t, kIgniterCount> remaining_ms{0, 0, 0, 0};
+  uint32_t crc32 = 0;
+};
+
 #pragma pack(pop)
 
 // Backward-compatible aliases. Prefer External* names in new code.
