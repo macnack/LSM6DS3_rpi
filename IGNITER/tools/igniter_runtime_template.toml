@@ -1,0 +1,43 @@
+# IGNITER runtime config template (CM5/RPi5)
+#
+# Copy this block into your runtime TOML, then adjust line offsets.
+# Keep all channels on the same gpiochip for synchronized batch fire.
+
+[igniter]
+enabled = true
+use_hardware = true
+fault_policy = "global"     # "global" or "isolated"
+settle_ms = 5
+latch_faults = true
+default_fire_ms = 200
+max_fire_ms = 2000
+command_shm = "/rt_igniter_command_v1"
+status_shm = "/rt_igniter_status_v1"
+
+[igniter0]
+enabled = true
+input_chip = "/dev/gpiochip4"   # CM5/RPi5 usually label: pinctrl-rp1
+input_line = 17
+status_chip = "/dev/gpiochip4"
+status_line = 5
+
+[igniter1]
+enabled = true
+input_chip = "/dev/gpiochip4"
+input_line = 18
+status_chip = "/dev/gpiochip4"
+status_line = 6
+
+[igniter2]
+enabled = true
+input_chip = "/dev/gpiochip4"
+input_line = 27
+status_chip = "/dev/gpiochip4"
+status_line = 13
+
+[igniter3]
+enabled = true
+input_chip = "/dev/gpiochip4"
+input_line = 22
+status_chip = "/dev/gpiochip4"
+status_line = 19

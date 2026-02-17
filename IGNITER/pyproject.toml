@@ -26,3 +26,4 @@ IGNITER_BUILD_PYTHON = "ON"
 
 [project.scripts]
 igniter-demo = "igniter_rpi.cli:main"
+igniter-gpiochip-check = "igniter_rpi.tools.gpiochip_check:main"
