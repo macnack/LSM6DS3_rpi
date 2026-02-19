@@ -1,4 +1,4 @@
-# Raspberry Pi IMU + BARO + SERVO + ADC + IGNITER + BUZZER Superbuild
+# Raspberry Pi IMU + BARO + SERVO + ADC + AIRSPEED + IGNITER + BUZZER Superbuild
 
 This repository contains:
 
@@ -6,6 +6,7 @@ This repository contains:
 - `BARO/`: BMP390 barometer library (I2C).
 - `SERVO/`: Hardware PWM servo library (Raspberry Pi 5 Linux).
 - `ADC/`: ADS1115 ADC library (I2C).
+- `AIRSPEED/`: MS4525DO airspeed library (I2C).
 - `IGNITER/`: VN5E160S + Igniter + IgniterBank (4-channel synchronized ignition).
 - `BUZZER/`: LPB2418A-style buzzer library (libgpiod, event/alarm patterns).
 - `runtime/`: RT core runtime (`rt_core`) with workers, IPC, fallback policies, and tests.
@@ -17,7 +18,7 @@ Each subproject can be built independently, or you can build all enabled modules
 From the repository root:
 
 ```bash
-cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=OFF -DBMP390_BUILD_PYTHON=OFF -DSERVO_BUILD_PYTHON=OFF -DADS1115_BUILD_PYTHON=OFF -DIGNITER_BUILD_PYTHON=OFF -DBUZZER_BUILD_PYTHON=OFF
+cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=OFF -DBMP390_BUILD_PYTHON=OFF -DSERVO_BUILD_PYTHON=OFF -DADS1115_BUILD_PYTHON=OFF -DMS4525DO_BUILD_PYTHON=OFF -DIGNITER_BUILD_PYTHON=OFF -DBUZZER_BUILD_PYTHON=OFF
 cmake --build build -j
 ```
 
@@ -28,6 +29,7 @@ Executables will be in `build/`, for example:
 - `build/bmp390_read_once`
 - `build/servo_set_pulse`
 - `build/ads1115_read_once`
+- `build/ms4525do_read_once`
 - `build/igniter_bank_demo`
 - `build/buzzer_play_profile`
 
@@ -42,6 +44,7 @@ cmake -S . -B build \
   -DBMP390_BUILD_PYTHON=OFF \
   -DSERVO_BUILD_PYTHON=OFF \
   -DADS1115_BUILD_PYTHON=OFF \
+  -DMS4525DO_BUILD_PYTHON=OFF \
   -DIGNITER_BUILD_PYTHON=OFF \
   -DBUZZER_BUILD_PYTHON=OFF
 cmake --build build -j
@@ -59,6 +62,7 @@ cmake -S . -B build \
   -DBMP390_BUILD_PYTHON=OFF \
   -DSERVO_BUILD_PYTHON=OFF \
   -DADS1115_BUILD_PYTHON=OFF \
+  -DMS4525DO_BUILD_PYTHON=OFF \
   -DIGNITER_BUILD_PYTHON=OFF \
   -DBUZZER_BUILD_PYTHON=OFF
 cmake --build build -j
@@ -124,6 +128,13 @@ cmake -S . -B build -DBUILD_IMU=OFF -DBUILD_BARO=OFF -DBUILD_SERVO=OFF -DBUILD_A
 cmake --build build -j
 ```
 
+AIRSPEED only:
+
+```bash
+cmake -S . -B build -DBUILD_IMU=OFF -DBUILD_BARO=OFF -DBUILD_SERVO=OFF -DBUILD_ADC=OFF -DBUILD_AIRSPEED=ON -DBUILD_IGNITER=OFF -DBUILD_BUZZER=OFF
+cmake --build build -j
+```
+
 BUZZER only:
 
 ```bash
@@ -143,7 +154,7 @@ cmake --build build -j
 If you want the Python modules at the root build, enable them explicitly and make sure `pybind11` is available in your environment:
 
 ```bash
-cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=ON -DBMP390_BUILD_PYTHON=ON -DSERVO_BUILD_PYTHON=ON -DADS1115_BUILD_PYTHON=ON -DIGNITER_BUILD_PYTHON=ON -DBUZZER_BUILD_PYTHON=ON
+cmake -S . -B build -DLSM6DS3_BUILD_PYTHON=ON -DBMP390_BUILD_PYTHON=ON -DSERVO_BUILD_PYTHON=ON -DADS1115_BUILD_PYTHON=ON -DMS4525DO_BUILD_PYTHON=ON -DIGNITER_BUILD_PYTHON=ON -DBUZZER_BUILD_PYTHON=ON
 cmake --build build -j
 ```
 
@@ -167,6 +178,10 @@ python -m pip install dist/bmp390_rpi-*.whl
 cd ../ADC
 python -m build
 python -m pip install dist/ADS1115_rpi-*.whl
+
+cd ../AIRSPEED
+python -m build
+python -m pip install dist/ms4525do_rpi-*.whl
 ```
 
 If you want to interact with the runtime helpers (including `rt-status-report`), install the repo in editable mode before running those tools:
@@ -186,7 +201,7 @@ Each script accepts `--duration-sec` if you want to stop after a fixed runtime, 
 
 ### One-Command Root Build (emits all wheels)
 
-The root `pyproject.toml` includes a custom build hook that runs `python -m build` in `IMU/`, `BARO/`, `SERVO/`, `ADC/`, `IGNITER/`, and `BUZZER/` and places all wheels into the root `dist/` folder. It also creates a small `rpi_sensors` wheel (metadata only).
+The root `pyproject.toml` includes a custom build hook that runs `python -m build` in `IMU/`, `BARO/`, `SERVO/`, `ADC/`, `AIRSPEED/`, `IGNITER/`, and `BUZZER/` and places all wheels into the root `dist/` folder. It also creates a small `rpi_sensors` wheel (metadata only).
 
 ```bash
 python3.13 -m venv .venv
@@ -202,6 +217,7 @@ Outputs in `dist/`:
 - `bmp390_rpi-*.whl`
 - `servo_rpi-*.whl`
 - `ADS1115_rpi-*.whl`
+- `ms4525do_rpi-*.whl`
 - `igniter_rpi-*.whl`
 - `buzzer_rpi-*.whl`
 
@@ -211,6 +227,7 @@ For more Python packaging and runtime usage details, see:
 - `BARO/README.md`
 - `SERVO/README.md`
 - `ADC/README.md`
+- `AIRSPEED/README.md`
 - `IGNITER/README.md`
 - `BUZZER/README.md`
 - `runtime/README.md`
