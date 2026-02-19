@@ -24,6 +24,7 @@ class BuildHook(BuildHookInterface):
             root / "BARO",
             root / "SERVO",
             root / "ADC",
+            root / "AIRSPEED",
             root / "IGNITER",
             root / "BUZZER",
         ]
@@ -32,7 +33,7 @@ class BuildHook(BuildHookInterface):
             if not subproject.exists():
                 raise FileNotFoundError(
                     f"Missing subproject directory: {subproject}. "
-                    "Ensure IMU/, BARO/, SERVO/, ADC/, IGNITER/, and BUZZER/ are included in the sdist."
+                    "Ensure IMU/, BARO/, SERVO/, ADC/, AIRSPEED/, IGNITER/, and BUZZER/ are included in the sdist."
                 )
             subprocess.run(
                 [

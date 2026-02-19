@@ -1,0 +1,37 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "ms4525do_rpi"
+version = "0.1.0"
+description = "Production-grade Linux I2C driver and Python bindings for TE MS4525DO"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{name = "MS4525DO contributors"}]
+license = {text = "MIT"}
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: C++",
+  "Operating System :: POSIX :: Linux",
+]
+
+[tool.scikit-build]
+wheel.packages = ["python/ms4525do_rpi"]
+cmake.build-type = "Release"
+
+[tool.scikit-build.cmake.define]
+MS4525DO_BUILD_PYTHON = "ON"
+
+[project.scripts]
+ms4525do-stream = "ms4525do_rpi.cli:main"
+airspeed-calibrate = "ms4525do_rpi.calibrate:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.cibuildwheel]
+build = ["cp313-manylinux_aarch64"]
+archs = ["aarch64"]
+skip = ["*-musllinux*"]
